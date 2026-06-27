@@ -1,21 +1,25 @@
 /* ============================================================
-   storage.js  —  Onetrack Shared Storage Engine  v4.0
+   storage.js  —  Onetrack Shared Storage Engine  v5.0
    ------------------------------------------------------------
-   v4.0: Switched from popup-based Google sign-in (GIS token
-   client) to a full-page REDIRECT-based OAuth flow.
+   v5.0: storage.js now does THREE jobs instead of one, so every
+   HTML page only ever needs ONE shared script tag:
 
-   WHY: Safari (especially iPadOS) blocks the popup from
-   properly communicating its token back to the opening page
-   due to Intelligent Tracking Prevention — this caused an
-   endless "sign in → popup closes → still not signed in" loop.
-   A top-level redirect has no such restriction.
+     1. STORAGE  (unchanged from v4.0) — Drive sync, OAuth.
+     2. NAV      (new) — builds the sidebar links into
+        <div id="onetrack-nav-links"></div> on every page, with
+        drag-to-reorder (grip-dot handle). Settings is always
+        pinned at the bottom and is not draggable.
+     3. THEME    (new) — applies dark mode, accent colour, and
+        font scale to every page from one place, instead of each
+        page having its own copy (which is why pages used to look
+        inconsistent with each other).
 
-   PUBLIC API — unchanged, all HTML files work as-is:
+   PUBLIC API — all unchanged, every HTML file works as-is:
      await OT.get(key) / OT.set(key,value) / OT.remove(key)
      await OT.keys() / OT.getAll() / OT.setAll(obj) / OT.clear()
-     OT.onReady(fn)  /  OT.isReady()
+     OT.onReady(fn)  /  OT.isReady()  /  OT.onChange(fn)  (new)
 
-   HOW IT WORKS (v4.0):
+   HOW STORAGE WORKS (v4.0, unchanged):
    1. Banner shows "Sign in to sync".
    2. Tapping Sign in saves the current page URL, then does a
       normal full-page redirect to Google's consent screen.
@@ -29,11 +33,54 @@
       only) — expires after ~1 hour, same re-sign-in cadence as
       before, just via redirect instead of popup.
 
+   HOW NAV WORKS (v5.0, new):
+   - The page list + labels live in NAV_PAGES below — edit that
+     array (and nowhere else) to add/rename/remove a page.
+   - Drag order is saved in localStorage (ONETRACK_NAV_ORDER) —
+     instant, same-origin, no Drive round-trip needed, works the
+     moment you drop.
+   - Every page must have <div id="onetrack-nav-links"></div>
+     inside its <nav id="onetrack-nav">...</nav> for this to have
+     somewhere to render into.
+
+   HOW THEME WORKS (v5.0, new):
+   - Reads TODAY_DARK / ONETRACK_ACCENT / ONETRACK_ACCENT_DARK /
+     ONETRACK_FONT_SCALE from the synced file (same keys Settings
+     already writes — Settings doesn't need to change).
+   - A tiny snapshot of those values is mirrored into localStorage
+     (ONETRACK_THEME_SNAPSHOT) purely so the very next page load
+     can paint the correct theme INSTANTLY, before the Drive file
+     has even finished loading — this is what prevents the
+     "flash of wrong theme" that each page used to prevent on its
+     own with a private copy of this exact logic.
+   - Also sets a handful of extra per-section CSS variables
+     (--ft-accent, --pt-accent, --roh-accent, --esh-accent,
+     --kal-accent, --trv-accent, --rtn-accent and their *-soft
+     versions) on every page. Most pages don't use these and the
+     extra variables are simply ignored — but Checklists.html
+     does use them for its per-section colour theming, and this
+     is what keeps that working without needing page-specific
+     code anywhere.
+
    CONFIG:
    ============================================================ */
   const GOOGLE_CLIENT_ID = '356548061716-4fjrgh28vetubhuu2cf4ano859tnftuv.apps.googleusercontent.com';
   const DRIVE_FILE_NAME  = 'onetrack-data.json';
   const REDIRECT_URI     = 'https://kalyanturaga-sudo.github.io/onetrack-scheduler/oauth-callback.html';
+
+  /* ── NAV CONFIG — edit this list to add/rename/remove a page ── */
+  const NAV_PAGES = [
+    { id: 'ttb',        file: 'TT&B.html',           label: 'TT&B' },
+    { id: 'routines',   file: 'Routines.html',       label: 'Routines' },
+    { id: 'jobs',       file: 'Jobs.html',           label: 'Jobs' },
+    { id: 'checklists', file: 'Checklists.html',     label: 'Checklists' },
+    { id: 'trip',       file: 'Trip Planners.html',  label: 'Trip Planners' },
+    { id: 'weekly',     file: 'Weekly Planners.html',label: 'Weekly Planners' },
+    { id: 'libraries',  file: 'Libraries.html',      label: 'Libraries' },
+  ];
+  /* Settings is intentionally NOT in NAV_PAGES — it's pinned at the
+     bottom of the sidebar always, and is never draggable. */
+  const NAV_SETTINGS = { id: 'settings', file: 'Settings.html', label: 'Settings' };
 /* ============================================================ */
 
 (function (global) {
@@ -50,6 +97,7 @@
   let _ready       = false;
   let _readyQueue  = [];
   let _writeTimer  = null;
+  let _changeListeners = [];
 
   /* ══════════════════════════════════════════════════════════
      INDICATOR
@@ -264,6 +312,7 @@
       await _loadFromFile();
       _hideBanner();
       _setIndicator('saved');
+      _applyTheme(_cache || {});
       _markReady();
     } catch (err) {
       console.error('[Onetrack storage] Connect error:', err);
@@ -281,6 +330,229 @@
     _readyQueue = [];
   }
 
+  function _fireChange(key, value) {
+    _changeListeners.forEach(fn => {
+      try { fn(key, value); } catch (e) { console.error('[Onetrack storage] onChange listener error:', e); }
+    });
+  }
+
+  /* ══════════════════════════════════════════════════════════
+     SHARED STYLES (grip-dot drag handle, nav link layout)
+     Injected once so every page looks identical — no more
+     copy-pasted CSS per file.
+  ══════════════════════════════════════════════════════════ */
+
+  function _injectSharedStyles() {
+    if (document.getElementById('ot-shared-styles')) return;
+    const style = document.createElement('style');
+    style.id = 'ot-shared-styles';
+    style.textContent = `
+      .ot-nav-link { display:flex; align-items:center; gap:9px; }
+      .ot-drag-handle {
+        display:flex; align-items:center; justify-content:center;
+        flex-shrink:0; width:14px; height:20px; cursor:grab;
+        color:currentColor; opacity:0.45; transition:opacity .15s;
+      }
+      .ot-nav-link:hover .ot-drag-handle { opacity:0.85; }
+      .ot-drag-handle svg { display:block; }
+      .ot-drag-handle svg circle { fill:currentColor; }
+      .ot-nav-link.ot-dragging { opacity:0.4; }
+      .ot-nav-link.ot-drag-over { box-shadow: inset 0 2px 0 var(--accent); }
+      .ot-nav-link:active .ot-drag-handle { cursor:grabbing; }
+      .ot-nav-link.ot-pinned .ot-drag-handle { visibility:hidden; }
+    `;
+    document.head.appendChild(style);
+  }
+
+  const _GRIP_SVG = (
+    '<svg viewBox="0 0 12 22" width="12" height="20" aria-hidden="true">' +
+      [0, 1, 2].map(r =>
+        [0, 1].map(c => `<circle cx="${3 + c * 6}" cy="${4 + r * 7}" r="1.6"/>`).join('')
+      ).join('') +
+    '</svg>'
+  );
+
+  /* ══════════════════════════════════════════════════════════
+     NAV MODULE — builds the sidebar links + drag-to-reorder
+     into <div id="onetrack-nav-links"> on every page.
+  ══════════════════════════════════════════════════════════ */
+
+  const NAV_ORDER_KEY = 'ONETRACK_NAV_ORDER';
+  let _navDragId = null;
+
+  function _loadNavOrder() {
+    const ids = NAV_PAGES.map(p => p.id);
+    try {
+      const saved = JSON.parse(localStorage.getItem(NAV_ORDER_KEY));
+      if (Array.isArray(saved) && saved.length === ids.length && ids.every(id => saved.includes(id))) {
+        return saved;
+      }
+    } catch (e) {}
+    return ids;
+  }
+
+  let _navOrder = _loadNavOrder();
+
+  function _saveNavOrder(order) {
+    try { localStorage.setItem(NAV_ORDER_KEY, JSON.stringify(order)); } catch (e) {}
+  }
+
+  function _currentFile() {
+    try { return decodeURIComponent(location.pathname.split('/').pop() || ''); }
+    catch (e) { return ''; }
+  }
+
+  function _makeNavLink(page, draggable) {
+    const current = _currentFile();
+    const a = document.createElement('a');
+    a.href = page.file;
+    a.className = 'ot-nav-link' + (page.file === current ? ' active' : '') + (draggable ? '' : ' ot-pinned');
+
+    const handle = document.createElement('span');
+    handle.className = 'ot-drag-handle';
+    handle.innerHTML = _GRIP_SVG;
+    if (draggable) {
+      handle.title = 'Drag to reorder';
+      a.draggable = true;
+      a.dataset.navId = page.id;
+    }
+    a.appendChild(handle);
+
+    const label = document.createElement('span');
+    label.className = 'ot-nav-label';
+    label.textContent = page.label;
+    a.appendChild(label);
+
+    return a;
+  }
+
+  function _wireNavDrag(container) {
+    const links = Array.prototype.slice.call(container.querySelectorAll('a.ot-nav-link[draggable="true"]'));
+    links.forEach(a => {
+      a.addEventListener('dragstart', e => {
+        _navDragId = a.dataset.navId;
+        a.classList.add('ot-dragging');
+        e.dataTransfer.effectAllowed = 'move';
+        e.dataTransfer.setData('text/plain', a.dataset.navId);
+      });
+      a.addEventListener('dragend', () => {
+        a.classList.remove('ot-dragging');
+        links.forEach(l => l.classList.remove('ot-drag-over'));
+        _navDragId = null;
+      });
+      a.addEventListener('dragover', e => {
+        if (!_navDragId || _navDragId === a.dataset.navId) return;
+        e.preventDefault();
+        links.forEach(l => l.classList.remove('ot-drag-over'));
+        a.classList.add('ot-drag-over');
+      });
+      a.addEventListener('dragleave', () => a.classList.remove('ot-drag-over'));
+      a.addEventListener('drop', e => {
+        if (!_navDragId || _navDragId === a.dataset.navId) return;
+        e.preventDefault();
+        const fi = _navOrder.indexOf(_navDragId);
+        const ti = _navOrder.indexOf(a.dataset.navId);
+        if (fi < 0 || ti < 0) return;
+        _navOrder.splice(fi, 1);
+        _navOrder.splice(ti, 0, _navDragId);
+        _saveNavOrder(_navOrder);
+        _navDragId = null;
+        _buildNav();
+      });
+      // Prevent a drag-and-drop from also firing a navigation click
+      a.addEventListener('click', e => {
+        if (a.classList.contains('ot-dragging')) e.preventDefault();
+      });
+    });
+  }
+
+  function _buildNav() {
+    const container = document.getElementById('onetrack-nav-links');
+    if (!container) return;
+    container.innerHTML = '';
+    const byId = {};
+    NAV_PAGES.forEach(p => { byId[p.id] = p; });
+
+    _navOrder.forEach(id => {
+      const page = byId[id];
+      if (page) container.appendChild(_makeNavLink(page, true));
+    });
+    // Settings always pinned last, never draggable
+    container.appendChild(_makeNavLink(NAV_SETTINGS, false));
+
+    _wireNavDrag(container);
+  }
+
+  /* ══════════════════════════════════════════════════════════
+     THEME MODULE — dark mode, accent colour, font scale,
+     applied centrally instead of once per page.
+  ══════════════════════════════════════════════════════════ */
+
+  const THEME_SNAPSHOT_KEY = 'ONETRACK_THEME_SNAPSHOT';
+  const THEME_KEYS = [
+    'TODAY_DARK', 'ONETRACK_ACCENT', 'ONETRACK_ACCENT_DARK',
+    'ONETRACK_ACCENT_SOFT', 'ONETRACK_ACCENT_DARK_SOFT', 'ONETRACK_FONT_SCALE',
+  ];
+  // Extra per-section CSS variables some pages use (e.g. Checklists.html).
+  // Safe to set everywhere — pages that don't reference them just ignore them.
+  const EXTRA_ACCENT_VARS = ['--ft-accent', '--pt-accent', '--roh-accent', '--esh-accent', '--kal-accent', '--trv-accent', '--rtn-accent'];
+  const EXTRA_SOFT_VARS   = ['--ft-soft', '--pt-soft', '--roh-soft', '--esh-soft', '--trv-soft', '--rtn-soft'];
+
+  function _hexToSoft(hex, alpha) {
+    const r = parseInt(hex.slice(1, 3), 16), g = parseInt(hex.slice(3, 5), 16), b = parseInt(hex.slice(5, 7), 16);
+    return `rgba(${r},${g},${b},${alpha})`;
+  }
+
+  function _applyTheme(cache) {
+    cache = cache || {};
+    const html = document.documentElement;
+
+    const darkSaved = cache['TODAY_DARK'];
+    const dark = (darkSaved !== undefined && darkSaved !== null)
+      ? darkSaved === '1'
+      : window.matchMedia('(prefers-color-scheme: dark)').matches;
+    html.dataset.theme = dark ? 'dark' : '';
+
+    const lightHex = cache['ONETRACK_ACCENT'] || '#c17b3f';
+    const darkHex  = cache['ONETRACK_ACCENT_DARK'] || '#d4935a';
+    const hex  = dark ? darkHex : lightHex;
+    const soft = _hexToSoft(hex, dark ? 0.14 : 0.12);
+    html.style.setProperty('--accent', hex);
+    html.style.setProperty('--accent-soft', soft);
+    EXTRA_ACCENT_VARS.forEach(v => html.style.setProperty(v, hex));
+    EXTRA_SOFT_VARS.forEach(v => html.style.setProperty(v, soft));
+
+    const fs = parseFloat(cache['ONETRACK_FONT_SCALE'] || '1');
+    html.style.fontSize = (fs * 16) + 'px';
+
+    try {
+      localStorage.setItem(THEME_SNAPSHOT_KEY, JSON.stringify({
+        dark: dark ? '1' : '0', accent: lightHex, accentDark: darkHex, fontScale: fs,
+      }));
+    } catch (e) {}
+  }
+
+  function _applyThemeFromSnapshot() {
+    let snap = null;
+    try { snap = JSON.parse(localStorage.getItem(THEME_SNAPSHOT_KEY)); } catch (e) {}
+    if (snap) {
+      _applyTheme({
+        TODAY_DARK: snap.dark,
+        ONETRACK_ACCENT: snap.accent,
+        ONETRACK_ACCENT_DARK: snap.accentDark,
+        ONETRACK_FONT_SCALE: snap.fontScale,
+      });
+    } else if (window.matchMedia('(prefers-color-scheme: dark)').matches) {
+      // No snapshot yet (first ever visit) — at least avoid a light flash
+      // if the system itself is in dark mode.
+      document.documentElement.dataset.theme = 'dark';
+    }
+  }
+
+  // Run instantly, before DOMContentLoaded — this is what prevents the
+  // "flash of wrong theme" each page used to prevent on its own.
+  _applyThemeFromSnapshot();
+
   /* ══════════════════════════════════════════════════════════
      INIT
   ══════════════════════════════════════════════════════════ */
@@ -290,6 +562,8 @@
       document.addEventListener('DOMContentLoaded', _init);
       return;
     }
+    _injectSharedStyles();
+    _buildNav();
     _createIndicator();
 
     if (_checkForExistingToken()) {
@@ -313,6 +587,10 @@
       else _readyQueue.push(fn);
     },
 
+    onChange(fn) {
+      _changeListeners.push(fn);
+    },
+
     async get(key) {
       if (!_ready || !_cache) return null;
       const val = _cache[key];
@@ -323,12 +601,16 @@
       if (!_cache) _cache = {};
       _cache[key] = value;
       _scheduleSave();
+      if (THEME_KEYS.indexOf(key) !== -1) _applyTheme(_cache);
+      _fireChange(key, value);
     },
 
     async remove(key) {
       if (!_cache) return;
       delete _cache[key];
       _scheduleSave();
+      if (THEME_KEYS.indexOf(key) !== -1) _applyTheme(_cache);
+      _fireChange(key, null);
     },
 
     async keys() {
@@ -342,11 +624,13 @@
     async setAll(obj) {
       _cache = { ...obj };
       await _writeToFile();
+      _applyTheme(_cache);
     },
 
     async clear() {
       _cache = {};
       await _writeToFile();
+      _applyTheme(_cache);
     },
 
     pickFile: _signIn,
