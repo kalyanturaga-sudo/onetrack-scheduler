@@ -347,15 +347,13 @@
     const style = document.createElement('style');
     style.id = 'ot-shared-styles';
     style.textContent = `
-      .ot-nav-link { display:flex; align-items:center; gap:9px; }
       .ot-drag-handle {
-        display:flex; align-items:center; justify-content:center;
-        flex-shrink:0; width:14px; height:20px; cursor:grab;
-        color:currentColor; opacity:0.45; transition:opacity .15s;
+        display:inline-block; width:16px; text-align:center;
+        color:var(--text3); cursor:grab; font-size:14px;
+        padding:0 2px; flex-shrink:0; user-select:none;
+        opacity:0.6; transition:opacity .15s; vertical-align:middle;
       }
-      .ot-nav-link:hover .ot-drag-handle { opacity:0.85; }
-      .ot-drag-handle svg { display:block; }
-      .ot-drag-handle svg circle { fill:currentColor; }
+      .ot-nav-link:hover .ot-drag-handle { opacity:1; color:var(--text2); }
       .ot-nav-link.ot-dragging { opacity:0.4; }
       .ot-nav-link.ot-drag-over { box-shadow: inset 0 2px 0 var(--accent); }
       .ot-nav-link:active .ot-drag-handle { cursor:grabbing; }
@@ -364,13 +362,9 @@
     document.head.appendChild(style);
   }
 
-  const _GRIP_SVG = (
-    '<svg viewBox="0 0 12 22" width="12" height="20" aria-hidden="true">' +
-      [0, 1, 2].map(r =>
-        [0, 1].map(c => `<circle cx="${3 + c * 6}" cy="${4 + r * 7}" r="1.6"/>`).join('')
-      ).join('') +
-    '</svg>'
-  );
+  /* Same plain character + same look as the existing Days/slot drag handle
+     elsewhere in the app — kept visually identical on purpose. */
+  const _GRIP_CHAR = '⠿';
 
   /* ══════════════════════════════════════════════════════════
      NAV MODULE — builds the sidebar links + drag-to-reorder
@@ -410,7 +404,7 @@
 
     const handle = document.createElement('span');
     handle.className = 'ot-drag-handle';
-    handle.innerHTML = _GRIP_SVG;
+    handle.textContent = _GRIP_CHAR;
     if (draggable) {
       handle.title = 'Drag to reorder';
       a.draggable = true;
