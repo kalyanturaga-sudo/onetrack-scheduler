@@ -1178,7 +1178,8 @@ function migrateIfNeeded(obj){
   return obj;
 }
 
-let state = migrateIfNeeded(loadData());
+let state; // populated once OT.onReady fires (see below) — was previously
+           // built immediately at parse time, before saved data had loaded
 
 function getRawBlocks(){ return state._order.map(k => ({ key: k, ...state.blocks[k] })); }
 function save(){ saveData(state); }
@@ -1707,11 +1708,14 @@ function rollUnfinishedTasks(){
   _cset(ROLLOVER_KEY, "1");
 }
 
-rollUnfinishedTasks();
-
-/* Boot — wait for OT then render */
+/* Boot — wait for OT (real saved data) to actually load, THEN build
+   state from it, run rollover, and render. This used to run before
+   the real data arrived, so it always rebuilt from defaults and any
+   edits were lost on refresh. */
 OT.onReady(async () => {
   if(!Object.keys(_otCache).length) _otCache = await OT.getAll();
+  state = migrateIfNeeded(loadData());
+  rollUnfinishedTasks();
   render();
 });
 
