@@ -124,6 +124,11 @@
   let _cache       = null;
   let _ready       = false;
   let _readyQueue  = [];
+  // Keys written via OT.set()/remove() while not yet connected to Drive
+  // (or while a load is in flight) get tracked here, then replayed on
+  // top of the loaded file in _loadFromFile() so they're never silently
+  // lost when the real Drive data arrives.
+  let _pendingLocal = {};
   let _writeTimer  = null;
   let _changeListeners = [];
 
@@ -298,12 +303,20 @@
       `https://www.googleapis.com/drive/v3/files/${_fileId}?alt=media`
     );
     const text = await res.text();
+    let fileData;
     try {
-      _cache = text.trim() ? JSON.parse(text) : {};
+      fileData = text.trim() ? JSON.parse(text) : {};
     } catch (err) {
       console.warn('[' + APP_BRAND.name + ' storage] Could not parse Drive file, starting fresh:', err);
-      _cache = {};
+      fileData = {};
     }
+    // Merge rather than overwrite: any keys set locally (e.g. a theme
+    // toggle clicked before this load finished) win over the file's
+    // stale copy of those same keys, instead of being silently discarded.
+    // Drive remains the source of truth for everything not just changed
+    // in this tab.
+    _cache = { ...fileData, ..._pendingLocal };
+    _pendingLocal = {};
   }
 
   async function _writeToFile() {
@@ -545,7 +558,11 @@
     EXTRA_SOFT_VARS.forEach(v => html.style.setProperty(v, soft));
 
     const fs = parseFloat(cache['ONETRACK_FONT_SCALE'] || '1');
-    html.style.fontSize = (fs * 16) + 'px';
+    // NOTE: every page's CSS uses px, not rem, so changing the root
+    // font-size has nothing to scale. `zoom` scales the whole page
+    // (px included) proportionally, leaving the design untouched at
+    // the default value of 1.
+    html.style.zoom = fs;
 
     try {
       localStorage.setItem(THEME_SNAPSHOT_KEY, JSON.stringify({
@@ -666,6 +683,16 @@
 
     renderBrandFooter: _renderBrandFooter,
 
+    // Canonical theme engine, exposed so Settings.html (or any page)
+    // calls these instead of keeping its own private copy of the logic.
+    isDark() {
+      const v = _cache ? _cache['TODAY_DARK'] : null;
+      return (v !== undefined && v !== null) ? v === '1' : window.matchMedia('(prefers-color-scheme: dark)').matches;
+    },
+    applyTheme() { _applyTheme(_cache || {}); },
+    // Real page list, single source of truth (also drives the sidebar nav).
+    navPages: NAV_PAGES.map(p => ({ ...p })),
+
     isReady()   { return _ready; },
 
     onReady(fn) {
@@ -686,6 +713,7 @@
     async set(key, value) {
       if (!_cache) _cache = {};
       _cache[key] = value;
+      _pendingLocal[key] = value;
       _scheduleSave();
       if (THEME_KEYS.indexOf(key) !== -1) _applyTheme(_cache);
       _fireChange(key, value);
@@ -694,6 +722,7 @@
     async remove(key) {
       if (!_cache) return;
       delete _cache[key];
+      _pendingLocal[key] = undefined; // tombstone: still wins over stale file value
       _scheduleSave();
       if (THEME_KEYS.indexOf(key) !== -1) _applyTheme(_cache);
       _fireChange(key, null);
