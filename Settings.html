@@ -8,15 +8,8 @@
 <script src="storage.js"></script>
 <style>
   :root {
-    --bg: #f5f2ee;
-    --surface: #ffffff;
-    --surface2: #faf8f5;
-    --border: rgba(0,0,0,0.08);
-    --text: #1a1714;
-    --text2: #6b6560;
-    --text3: #9e9891;
-    --accent:#c17b3f;
-    --accent-soft:rgba(193,123,63,0.12);
+    --accent:#1d4fd6;
+    --accent-soft:rgba(29,79,214,0.12);
     --shadow: 0 2px 12px rgba(0,0,0,0.06), 0 1px 3px rgba(0,0,0,0.04);
     --shadow-hover: 0 8px 28px rgba(0,0,0,0.10), 0 2px 8px rgba(0,0,0,0.06);
     --radius: 16px;
@@ -27,15 +20,8 @@
     --red-soft: rgba(192,57,43,0.10);
   }
   [data-theme="dark"] {
-    --bg: #131210;
-    --surface: #1e1c18;
-    --surface2: #252320;
-    --border: rgba(255,255,255,0.08);
-    --text: #f0ece6;
-    --text2: #a09890;
-    --text3: #6e6660;
-    --accent:#d4935a;
-    --accent-soft:rgba(212,147,90,0.14);
+    --accent:#5b7fff;
+    --accent-soft:rgba(91,127,255,0.14);
     --shadow: 0 2px 12px rgba(0,0,0,0.3), 0 1px 3px rgba(0,0,0,0.2);
     --shadow-hover: 0 8px 28px rgba(0,0,0,0.4), 0 2px 8px rgba(0,0,0,0.3);
     --green: #4aab72;
@@ -484,12 +470,11 @@ body.nav-is-collapsed #nav-show-tab { display: flex; align-items: center; gap: 5
         </div>
         <div class="setting-control">
           <div class="swatch-row" id="accentSwatches">
-            <button class="swatch" data-accent="#c17b3f" data-accent-dark="#d4935a" title="Amber (default)" style="background:#c17b3f;"></button>
-            <button class="swatch" data-accent="#3a6ba0" data-accent-dark="#5b8fc4" title="Blue" style="background:#3a6ba0;"></button>
-            <button class="swatch" data-accent="#3a8c5c" data-accent-dark="#4aab72" title="Green" style="background:#3a8c5c;"></button>
-            <button class="swatch" data-accent="#8c3a6b" data-accent-dark="#b85a94" title="Plum" style="background:#8c3a6b;"></button>
-            <button class="swatch" data-accent="#6a3ac1" data-accent-dark="#8c65d4" title="Violet" style="background:#6a3ac1;"></button>
-            <button class="swatch" data-accent="#1a1714" data-accent-dark="#d0ccc6" title="Ink" style="background:#1a1714;"></button>
+            <button class="swatch" data-accent="#1d4fd6" data-accent-dark="#5b7fff" title="Cobalt" style="background:#1d4fd6;"></button>
+            <button class="swatch" data-accent="#d4202c" data-accent-dark="#ff4d4d" title="Crimson" style="background:#d4202c;"></button>
+            <button class="swatch" data-accent="#7cb518" data-accent-dark="#a8e62e" title="Lime" style="background:#7cb518;"></button>
+            <button class="swatch" data-accent="#d6258f" data-accent-dark="#ff5cb8" title="Magenta" style="background:#d6258f;"></button>
+            <button class="swatch" data-accent="#e8a90c" data-accent-dark="#ffd05c" title="Gold" style="background:#e8a90c;"></button>
           </div>
         </div>
       </div>
@@ -853,7 +838,7 @@ document.getElementById('toggleDark').onclick = () => {
 
 /* ── accent colour ── */
 function applyAccent() {
-  const lightHex = get(K.ACCENT) || '#c17b3f';
+  const lightHex = get(K.ACCENT) || '#1d4fd6';
   OT.applyTheme();
   // mark active swatch (UI state unique to this page)
   document.querySelectorAll('.swatch').forEach(s => {
