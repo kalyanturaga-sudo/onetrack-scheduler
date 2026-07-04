@@ -101,6 +101,8 @@
     name:    'Ctrl+A',
     tagline: 'Capture all. Control all.',
   };
+  /* Version shown in the global footer. Bump here only. */
+  const APP_VERSION = 'v1.0';
 
   /* ── NAV CONFIG — edit this list to add/rename/remove a page ── */
   const NAV_PAGES = [
@@ -687,22 +689,58 @@
    * lastUpdated: a Date — the moment you last changed that page's
    *              code, NOT when the page happens to be viewed.
    */
-  function _renderBrandFooter(containerId, version, lastUpdated) {
-    const el = document.getElementById(containerId);
-    if (!el) return;
-    _injectBrandFooterStyles();
-    el.classList.add('ot-brand-footer');
-    // Centralized last-updated stamp: use THIS page's own file modification
-    // time (document.lastModified). On GitHub Pages that's when you last
-    // deployed this HTML file, so each page stamps its own real update time
-    // with no per-page code. Falls back to the date the page passed in only
-    // if document.lastModified is unavailable (some servers return epoch 0).
-    let _when = new Date(document.lastModified);
-    if (isNaN(_when.getTime()) || _when.getTime() === 0) _when = lastUpdated || null;
-    const stamp = _formatBrandDate(_when);
-    const parts = [APP_BRAND.tagline, version, stamp ? ('Last updated ' + stamp) : null]
+  /* Deprecated as of the centralized footer: the footer is now ONE global
+     bottom-centre element built by _renderGlobalFooter() on every page (see
+     below). This is kept as a no-op only so the eight pages' existing
+     OT.renderBrandFooter('otBrandFooter…', 'v1.0', <date>) calls don't throw
+     and don't produce a second, duplicate footer. Nothing needs editing on
+     any page. */
+  function _renderBrandFooter(/* containerId, version, lastUpdated */) {}
+
+  /* ── GLOBAL FOOTER — single muted line, fixed at the bottom CENTRE of every
+     page, built the same page-independent way as the sync dot / sign-in
+     banner. Shows immediately (not gated behind sign-in). Replaces the old
+     per-page inline <span> approach, so TT&B, Settings, and every other page
+     get the identical footer in the identical place with no per-page code.
+       "{tagline} | {version} | Last updated DD-MMM-YY HH:MM"
+     Timestamp is THIS page's own file modification time (document.lastModified
+     — on GitHub Pages that's when you last deployed this file), formatted in
+     Sydney time by _formatBrandDate. ── */
+  function _injectGlobalFooterStyles() {
+    if (document.getElementById('ot-global-footer-styles')) return;
+    const style = document.createElement('style');
+    style.id = 'ot-global-footer-styles';
+    style.textContent = `
+      #ot-global-footer {
+        position: fixed; left: 50%; bottom: 6px; transform: translateX(-50%);
+        z-index: 9998; pointer-events: none; text-align: center;
+        max-width: calc(100vw - 32px); white-space: nowrap;
+        overflow: hidden; text-overflow: ellipsis;
+        font-family: 'DM Sans', sans-serif; font-size: 11px; font-style: italic;
+        color: var(--text3, #8a8478);
+        background: var(--bg, transparent); padding: 3px 12px; border-radius: 8px;
+        opacity: 0.9;
+      }
+      @media (max-width: 640px) { #ot-global-footer { display: none; } }
+    `;
+    document.head.appendChild(style);
+  }
+
+  function _renderGlobalFooter() {
+    if (!document.body) return;
+    _injectGlobalFooterStyles();
+    let el = document.getElementById('ot-global-footer');
+    if (!el) {
+      el = document.createElement('div');
+      el.id = 'ot-global-footer';
+      document.body.appendChild(el);
+    }
+    let when = new Date(document.lastModified);
+    if (isNaN(when.getTime()) || when.getTime() === 0) when = null;
+    const stamp = _formatBrandDate(when);
+    const parts = [APP_BRAND.tagline, APP_VERSION, stamp ? ('Last updated ' + stamp) : null]
       .filter(Boolean);
-    el.textContent = parts.join(' · ');
+    el.textContent = parts.join(' | ');
   }
 
   /* ══════════════════════════════════════════════════════════
@@ -717,6 +755,7 @@
     _injectSharedStyles();
     _buildNav();
     _createIndicator();
+    _renderGlobalFooter();
 
     if (_checkForExistingToken()) {
       _connectToFile();
@@ -819,6 +858,149 @@
       _showBanner(..._signInBannerMsg());
     },
   };
+
+  /* ══════════════════════════════════════════════════════════
+     BRAND TRACE  (v5.5)
+     ------------------------------------------------------------
+     On every page load: a dot in the brand's own font colour
+     traces a rounded rectangle around the "Ctrl+A" nav name, then
+     the existing logo checkbox (#logoCheck) ticks off.
+
+     Centralised here so all pages share ONE copy. It also takes
+     over the per-page  setTimeout(runCheck, 500)  auto-tick: we
+     replace #logoCheck with a fresh clone, which drops that inline
+     script's click handler and its pending timer (the timer then
+     fires on the now-detached original node — no visual effect),
+     so the tick lands AFTER the trace, not during it. Click-to-
+     toggle is re-added below so it still works.
+  ══════════════════════════════════════════════════════════ */
+
+  function _injectBrandTraceStyles() {
+    if (document.getElementById('ot-brand-trace-styles')) return;
+    const style = document.createElement('style');
+    style.id = 'ot-brand-trace-styles';
+    style.textContent = `
+      .ot-trace-host{position:relative;display:inline-flex;align-items:center;}
+      .ot-trace-svg{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);
+        overflow:visible;pointer-events:none;}
+      .ot-trace-svg .ot-trace-rect{fill:none;stroke:currentColor;stroke-width:1.8;
+        stroke-linecap:round;stroke-linejoin:round;}
+      .ot-trace-svg .ot-trace-dot{fill:currentColor;}
+    `;
+    document.head.appendChild(style);
+  }
+
+  // Re-usable tick / untick that drive the page's existing keyframes
+  // (logoBoxFill / logoTickDraw / logoBoxUnfill / logoTickErase).
+  function _tickLogo(el) {
+    el.classList.remove('uncheck', 'is-checked');
+    void el.offsetWidth;
+    el.classList.add('animating');
+    el.addEventListener('animationend', function done(e) {
+      if (e.animationName === 'logoTickDraw') {
+        el.removeEventListener('animationend', done);
+        el.classList.remove('animating');
+        el.classList.add('is-checked');
+      }
+    });
+  }
+  function _untickLogo(el) {
+    el.classList.remove('animating', 'is-checked');
+    void el.offsetWidth;
+    el.classList.add('uncheck');
+    el.addEventListener('animationend', function done(e) {
+      if (e.animationName === 'logoBoxUnfill') {
+        el.removeEventListener('animationend', done);
+        el.classList.remove('uncheck');
+      }
+    });
+  }
+
+  function _runBrandTrace() {
+    var name = document.getElementById('otBrandName');
+    var logo = document.getElementById('logoCheck');
+    if (!name || !logo || name.__otTraced) return;
+    name.__otTraced = true;
+
+    // Ensure the name is present so we can measure its width. (This
+    // runs before the page's own fillBrandName(); setting it here is
+    // harmless — the page sets the same text again a moment later.)
+    if (!name.textContent) name.textContent = APP_BRAND.name;
+
+    // Take over the auto-tick by cloning (see banner note above).
+    var fresh = logo.cloneNode(true);
+    fresh.classList.remove('animating', 'is-checked', 'uncheck');
+    logo.parentNode.replaceChild(fresh, logo);
+    logo = fresh;
+
+    _injectBrandTraceStyles();
+
+    // Wrap the name so the trace SVG can overlay it.
+    var host = document.createElement('span');
+    host.className = 'ot-trace-host';
+    name.parentNode.insertBefore(host, name);
+    host.appendChild(name);
+
+    var NS = 'http://www.w3.org/2000/svg';
+    var svg  = document.createElementNS(NS, 'svg');    svg.setAttribute('class', 'ot-trace-svg');
+    var rect = document.createElementNS(NS, 'rect');   rect.setAttribute('class', 'ot-trace-rect');
+    var dot  = document.createElementNS(NS, 'circle'); dot.setAttribute('class', 'ot-trace-dot'); dot.setAttribute('r', '2.6');
+    svg.appendChild(rect); svg.appendChild(dot); host.appendChild(svg);
+
+    var DUR = 2600, GAP = 280, PADX = 9, PADY = 6, RX = 8, INSET = 2;
+    var reduce = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+    function play() {
+      var w = name.offsetWidth, h = name.offsetHeight;
+      if (!w || !h) return;
+      var W = w + PADX * 2, H = h + PADY * 2;
+      svg.setAttribute('width', W); svg.setAttribute('height', H);
+      svg.setAttribute('viewBox', '0 0 ' + W + ' ' + H);
+      rect.setAttribute('x', INSET); rect.setAttribute('y', INSET);
+      rect.setAttribute('width', W - INSET * 2); rect.setAttribute('height', H - INSET * 2);
+      rect.setAttribute('rx', RX); rect.setAttribute('ry', RX);
+      var len = rect.getTotalLength();
+      rect.style.strokeDasharray = len;
+      rect.style.strokeDashoffset = len;
+
+      if (reduce) {
+        rect.style.strokeDashoffset = 0;
+        var s = rect.getPointAtLength(0);
+        dot.setAttribute('cx', s.x); dot.setAttribute('cy', s.y);
+        _tickLogo(logo);
+        return;
+      }
+
+      function ease(t) { return t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2; }
+      var t0 = null;
+      function frame(now) {
+        if (t0 === null) t0 = now;
+        var t = Math.min(1, (now - t0) / DUR), e = ease(t), drawn = Math.max(2, len * e);
+        rect.style.strokeDashoffset = len - drawn;
+        var p = rect.getPointAtLength(Math.min(len, drawn));
+        dot.setAttribute('cx', p.x); dot.setAttribute('cy', p.y);
+        if (t < 1) requestAnimationFrame(frame);
+        else setTimeout(function () { _tickLogo(logo); }, GAP);
+      }
+      requestAnimationFrame(frame);
+    }
+
+    // Wait for the webfont so the rectangle is sized to the real text width.
+    if (document.fonts && document.fonts.ready) document.fonts.ready.then(function () { requestAnimationFrame(play); });
+    else requestAnimationFrame(play);
+
+    // Preserve click-to-toggle (re-added since we replaced the node).
+    var checked = false;
+    logo.addEventListener('animationend', function (e) {
+      if (e.animationName === 'logoTickDraw') checked = true;
+      if (e.animationName === 'logoBoxUnfill') checked = false;
+    });
+    logo.addEventListener('click', function () { checked ? _untickLogo(logo) : _tickLogo(logo); });
+  }
+
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', _runBrandTrace);
+  else _runBrandTrace();
+
 
   global.OT = OT;
   _init();
