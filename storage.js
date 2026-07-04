@@ -883,9 +883,14 @@
       .ot-trace-host{position:relative;display:inline-flex;align-items:center;}
       .ot-trace-svg{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);
         overflow:visible;pointer-events:none;}
-      .ot-trace-svg .ot-trace-rect{fill:none;stroke:currentColor;stroke-width:1.8;
+      .ot-trace-svg .ot-trace-rect{fill:none;stroke:currentColor;stroke-width:2.2;
         stroke-linecap:round;stroke-linejoin:round;}
       .ot-trace-svg .ot-trace-dot{fill:currentColor;}
+      /* Dark mode: add a faint light halo so the trace never sinks into the
+         dark sidebar, even when the accent colour is dim. */
+      [data-theme="dark"] .ot-trace-svg .ot-trace-rect,
+      [data-theme="dark"] .ot-trace-svg .ot-trace-dot{
+        filter:drop-shadow(0 0 1.5px rgba(255,255,255,0.35));}
     `;
     document.head.appendChild(style);
   }
