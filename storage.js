@@ -347,7 +347,10 @@
   }
 
   async function _writeToFile() {
-    if (!_fileId || !_accessToken) return;
+    // Always keep the local mirror current so logged-out / offline edits
+    // survive a reload. Cheap and synchronous.
+    _writeMirror();
+    if (!_fileId || !_accessToken) return;  // not signed in: local-only
     try {
       _setIndicator('saving');
       await _driveFetch(
@@ -551,6 +554,20 @@
   ══════════════════════════════════════════════════════════ */
 
   const THEME_SNAPSHOT_KEY = 'ONETRACK_THEME_SNAPSHOT';
+
+  // Local mirror of the whole data cache, kept in localStorage. This lets
+  // every page render and save even when the user is not signed into Drive
+  // (e.g. a fresh visit to the public site). When signed in, Drive stays
+  // the source of truth; this is just a same-device fallback/offline cache.
+  const LOCAL_MIRROR_KEY = 'ONETRACK_LOCAL_MIRROR';
+  function _readMirror() {
+    try { return JSON.parse(localStorage.getItem(LOCAL_MIRROR_KEY)) || {}; }
+    catch (e) { return {}; }
+  }
+  function _writeMirror() {
+    try { localStorage.setItem(LOCAL_MIRROR_KEY, JSON.stringify(_cache || {})); }
+    catch (e) {}
+  }
   const THEME_KEYS = [
     'TODAY_DARK', 'ONETRACK_ACCENT', 'ONETRACK_ACCENT_DARK',
     'ONETRACK_ACCENT_SOFT', 'ONETRACK_ACCENT_DARK_SOFT', 'ONETRACK_FONT_SCALE',
@@ -762,6 +779,12 @@
     } else {
       _setIndicator('unlinked');
       _showBanner(..._signInBannerMsg());
+      // Work offline: seed the cache from the local mirror so every page's
+      // onReady() fires and the UI renders (and stays editable) even without
+      // Drive sign-in. Signing in later reloads and Drive takes over.
+      _cache = _readMirror();
+      _applyTheme(_cache);
+      _markReady();
     }
   }
 
