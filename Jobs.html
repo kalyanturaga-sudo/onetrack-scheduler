@@ -1383,5 +1383,23 @@ OT.onReady(async () => {
   }
 })();
 </script>
+<script>
+/* ── Fill sidebar brand name from storage.js (OT.brand.name) — shows
+   immediately, independent of Drive sign-in. ── */
+(function () {
+  function fillBrandName() {
+    if (typeof OT === "undefined" || !OT.brand) return;
+    ['otBrandName', 'otBrandNameAbout'].forEach(function (id) {
+      var el = document.getElementById(id);
+      if (el) el.textContent = OT.brand.name;
+    });
+  }
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', fillBrandName);
+  } else {
+    fillBrandName();
+  }
+})();
+</script>
 </body>
 </html>
