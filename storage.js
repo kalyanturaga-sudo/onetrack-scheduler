@@ -990,9 +990,8 @@
       var len = rect.getTotalLength();
       rect.style.strokeDasharray = len;
       rect.style.strokeDashoffset = len;
-      if (reduce) DUR = 900;
-      }
-
+if (reduce) DUR = 900;
+function ease(t) { return t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2; }
       function ease(t) { return t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2; }
       var t0 = null;
       function frame(now) {
