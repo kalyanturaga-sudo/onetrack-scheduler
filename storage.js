@@ -883,37 +883,40 @@
   };
 
   /* ══════════════════════════════════════════════════════════
-     BRAND TRACE  (v5.5)
+     BRAND SEQUENCE LOOP  (v5.6)
      ------------------------------------------------------------
-     On every page load: a dot in the brand's own font colour
-     traces a rounded rectangle around the "Ctrl+A" nav name, then
-     the existing logo checkbox (#logoCheck) ticks off.
+     On every page load the nav brand animates on an infinite loop:
+     "Ctrl" pops in, then "+", then "A" (each with a springy scale),
+     then the logo checkbox (#logoCheck) ticks. After a short hold
+     everything resets and the sequence runs again. The name renders
+     in the normal font colour (var(--text)); the checkbox sits to
+     the RIGHT of the name.
 
-     Centralised here so all pages share ONE copy. It also takes
+     Centralised here so all pages share ONE copy. It still takes
      over the per-page  setTimeout(runCheck, 500)  auto-tick: we
      replace #logoCheck with a fresh clone, which drops that inline
      script's click handler and its pending timer (the timer then
      fires on the now-detached original node — no visual effect),
-     so the tick lands AFTER the trace, not during it. Click-to-
-     toggle is re-added below so it still works.
+     so the tick is driven only by this loop. Click-to-toggle is
+     re-added below so manual ticking still works. Reduced-motion
+     users get the name + a single tick, no loop.
   ══════════════════════════════════════════════════════════ */
 
   function _injectBrandTraceStyles() {
-    if (document.getElementById('ot-brand-trace-styles')) return;
+    if (document.getElementById('ot-brand-seq-styles')) return;
     const style = document.createElement('style');
-    style.id = 'ot-brand-trace-styles';
+    style.id = 'ot-brand-seq-styles';
     style.textContent = `
-      .ot-trace-host{position:relative;display:inline-flex;align-items:center;}
-      .ot-trace-svg{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);
-        overflow:visible;pointer-events:none;}
-      .ot-trace-svg .ot-trace-rect{fill:none;stroke:currentColor;stroke-width:2.2;
-        stroke-linecap:round;stroke-linejoin:round;}
-      .ot-trace-svg .ot-trace-dot{fill:currentColor;}
-      /* Dark mode: add a faint light halo so the trace never sinks into the
-         dark sidebar, even when the accent colour is dim. */
-      [data-theme="dark"] .ot-trace-svg .ot-trace-rect,
-      [data-theme="dark"] .ot-trace-svg .ot-trace-dot{
-        filter:drop-shadow(0 0 1.5px rgba(255,255,255,0.35));}
+      /* Brand name in the normal font colour (overrides .nav-title's accent). */
+      #otBrandName{color:var(--text);}
+      /* Each part starts hidden + shrunk; .ot-in springs it into place (Pop). */
+      #otBrandName .ot-seq-part{display:inline-block;opacity:0;transform:scale(.5);
+        transition:opacity .3s ease, transform .42s cubic-bezier(.34,1.56,.64,1);}
+      #otBrandName .ot-seq-part.ot-in{opacity:1;transform:scale(1);}
+      /* Reduced motion: show everything statically, no pop, no loop. */
+      @media (prefers-reduced-motion: reduce){
+        #otBrandName .ot-seq-part{opacity:1;transform:none;transition:none;}
+      }
     `;
     document.head.appendChild(style);
   }
@@ -963,52 +966,59 @@
 
     _injectBrandTraceStyles();
 
-    // Wrap the name so the trace SVG can overlay it.
-    var host = document.createElement('span');
-    host.className = 'ot-trace-host';
-    name.parentNode.insertBefore(host, name);
-    host.appendChild(name);
-
-    var NS = 'http://www.w3.org/2000/svg';
-    var svg  = document.createElementNS(NS, 'svg');    svg.setAttribute('class', 'ot-trace-svg');
-    var rect = document.createElementNS(NS, 'rect');   rect.setAttribute('class', 'ot-trace-rect');
-    var dot  = document.createElementNS(NS, 'circle'); dot.setAttribute('class', 'ot-trace-dot'); dot.setAttribute('r', '2.6');
-    svg.appendChild(rect); svg.appendChild(dot); host.appendChild(svg);
-
-    var DUR = 5100, GAP = 280, PADX = 9, PADY = 6, RX = 8, INSET = 2;
-    var reduce = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-
-    function play() {
-      var w = name.offsetWidth, h = name.offsetHeight;
-      if (!w || !h) return;
-      var W = w + PADX * 2, H = h + PADY * 2;
-      svg.setAttribute('width', W); svg.setAttribute('height', H);
-      svg.setAttribute('viewBox', '0 0 ' + W + ' ' + H);
-      rect.setAttribute('x', INSET); rect.setAttribute('y', INSET);
-      rect.setAttribute('width', W - INSET * 2); rect.setAttribute('height', H - INSET * 2);
-      rect.setAttribute('rx', RX); rect.setAttribute('ry', RX);
-      var len = rect.getTotalLength();
-      rect.style.strokeDasharray = len;
-      rect.style.strokeDashoffset = len;
-if (reduce) DUR = 900;
-function ease(t) { return t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2; }
-      function ease(t) { return t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2; }
-      var t0 = null;
-      function frame(now) {
-        if (t0 === null) t0 = now;
-        var t = Math.min(1, (now - t0) / DUR), e = ease(t), drawn = Math.max(2, len * e);
-        rect.style.strokeDashoffset = len - drawn;
-        var p = rect.getPointAtLength(Math.min(len, drawn));
-        dot.setAttribute('cx', p.x); dot.setAttribute('cy', p.y);
-        if (t < 1) requestAnimationFrame(frame);
-        else setTimeout(function () { _tickLogo(logo); }, GAP);
-      }
-      requestAnimationFrame(frame);
+    // Split the brand into "Ctrl" / "+" / "A" parts so each can pop in
+    // separately. Names without a "+" fall back to a single part.
+    function splitBrand(s) {
+      var i = s.indexOf('+');
+      return i === -1 ? [s] : [s.slice(0, i), '+', s.slice(i + 1)];
     }
 
-    // Wait for the webfont so the rectangle is sized to the real text width.
-    if (document.fonts && document.fonts.ready) document.fonts.ready.then(function () { requestAnimationFrame(play); });
-    else requestAnimationFrame(play);
+    var reduce = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+    // Build the spans + run the loop. DEFERRED (rAF / next task) so this runs
+    // AFTER each page's own fillBrandName(), which overwrites #otBrandName's
+    // textContent on DOMContentLoaded — doing it earlier would wipe our spans.
+    function boot() {
+      var full = name.textContent || APP_BRAND.name;
+      name.textContent = '';
+      var parts = splitBrand(full).map(function (txt) {
+        var span = document.createElement('span');
+        span.className = 'ot-seq-part';
+        span.textContent = txt;
+        name.appendChild(span);
+        return span;
+      });
+
+      // Move the checkbox to sit AFTER the name (right side).
+      if (name.nextSibling !== logo) name.parentNode.insertBefore(logo, name.nextSibling);
+
+      if (reduce) {                                   // static name + one tick, no loop
+        parts.forEach(function (p) { p.classList.add('ot-in'); });
+        _tickLogo(logo);
+        return;
+      }
+
+      // Ctrl -> + -> A -> tick -> hold -> reset -> loop (Pop / option B).
+      var STEP = 380, BASE = 560, HOLD = 1700;        // ms (Medium speed from the prototype)
+      var timers = [];
+      function clearTimers() { timers.forEach(clearTimeout); timers = []; }
+      function cycle() {
+        clearTimers();
+        parts.forEach(function (p) { p.classList.remove('ot-in'); });   // fade out previous pass
+        if (logo.classList.contains('is-checked')) _untickLogo(logo);   // reset the tick
+        parts.forEach(function (p, i) {
+          timers.push(setTimeout(function () { p.classList.add('ot-in'); }, BASE + STEP * i));
+        });
+        timers.push(setTimeout(function () { _tickLogo(logo); }, BASE + STEP * parts.length));
+        timers.push(setTimeout(cycle,                            BASE + STEP * parts.length + HOLD));
+      }
+      cycle();
+    }
+
+    // rAF/setTimeout guarantees boot() runs after the page's synchronous
+    // DOMContentLoaded work (incl. fillBrandName) and lets the webfont settle.
+    if (document.fonts && document.fonts.ready) document.fonts.ready.then(function () { requestAnimationFrame(boot); });
+    else setTimeout(boot, 0);
 
     // Preserve click-to-toggle (re-added since we replaced the node).
     var checked = false;
