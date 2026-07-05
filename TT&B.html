@@ -1644,6 +1644,7 @@ function _xMoveTask(task, dest, opsSlug) {
     if(!raw["pre-9"]) raw["pre-9"]=[];
     raw["pre-9"].unshift(t);
     localStorage.setItem(_XKEYS.tomorrow, JSON.stringify(raw));
+    if(typeof window._tomorrowSyncAndRender === 'function') window._tomorrowSyncAndRender();
     return "Tomorrow → Pre-9 am";
   }
   if (dest==="ops" && opsSlug) {
@@ -1906,6 +1907,7 @@ function carryAllIncomplete(){
     data[s] = data[s].filter(t=>t.done);
   });
   localStorage.setItem(TOMORROW_KEY, JSON.stringify(tomorrow));
+  if(typeof window._tomorrowSyncAndRender === 'function') window._tomorrowSyncAndRender();
   save(); render();
   showToast(`✓ ${incomplete.length} task(s) moved to Tomorrow`);
 }
@@ -2866,6 +2868,14 @@ function moveToToday(){
   showToast("✓ All tasks moved to Today");
 }
 window.moveToToday = moveToToday;
+  window._tomorrowSyncAndRender = function() {
+  const fresh = JSON.parse(localStorage.getItem(STORAGE_KEY)) || {};
+  SLOTS.forEach(s => { data[s] = normalize(fresh[s] || []); });
+  buildTmrwSidebar();
+  updateStats();
+  const active = getTmrwActiveSlot();
+  if (active && SLOTS.includes(active)) renderTmrwSlotContent(active);
+};
 
 function showToast(msg){
   const t=document.createElement("div");
