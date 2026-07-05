@@ -1261,22 +1261,39 @@ body.nav-is-collapsed #nav-show-tab { display: flex; align-items: center; gap: 5
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0 14px 14px;
-  border-bottom: 1px solid var(--border);
+  padding: 0 10px 14px;
+  border-bottom: none;
   margin-bottom: 10px;
-  gap: 6px;
+  gap: 8px;
 }
+/* Ctrl+A brand rendered as a slot-style bezel tab with the "9 PM & Beyond" pulse */
 .nav-header .nav-title {
   display: flex;
   align-items: center;
   gap: 8px;
   flex: 1;
+  position: relative;
+  overflow: hidden;
   font-family: 'DM Serif Display', serif;
   font-size: 18px;
   color: var(--accent);
-  padding: 0;
-  border-bottom: none;
-  margin-bottom: 0;
+  padding: 10px 12px;
+  border-radius: 11px;
+  border: 1.5px solid rgba(80,80,140,0.55);
+  background: rgba(80,80,140,0.18);
+  box-shadow: 3px 3px 12px rgba(0,0,0,0.13);
+  --slot-pulse-color: rgba(80,80,140,0.55);
+  animation: slotPulse 3s ease-in-out infinite;
+}
+.nav-header .nav-title::before {
+  content: '';
+  position: absolute;
+  left: 0; top: 50%;
+  transform: translateY(-50%);
+  width: 3px; height: 60%;
+  border-radius: 0 3px 3px 0;
+  background: rgba(80,80,140,0.55);
+  opacity: 0.9;
 }
 /* ── END NAV HEADER NORMALIZED ── */
 </style>
@@ -1644,7 +1661,6 @@ function _xMoveTask(task, dest, opsSlug) {
     if(!raw["pre-9"]) raw["pre-9"]=[];
     raw["pre-9"].unshift(t);
     localStorage.setItem(_XKEYS.tomorrow, JSON.stringify(raw));
-    if(typeof window._tomorrowSyncAndRender === 'function') window._tomorrowSyncAndRender();
     return "Tomorrow → Pre-9 am";
   }
   if (dest==="ops" && opsSlug) {
@@ -1907,7 +1923,6 @@ function carryAllIncomplete(){
     data[s] = data[s].filter(t=>t.done);
   });
   localStorage.setItem(TOMORROW_KEY, JSON.stringify(tomorrow));
-  if(typeof window._tomorrowSyncAndRender === 'function') window._tomorrowSyncAndRender();
   save(); render();
   showToast(`✓ ${incomplete.length} task(s) moved to Tomorrow`);
 }
@@ -2868,14 +2883,6 @@ function moveToToday(){
   showToast("✓ All tasks moved to Today");
 }
 window.moveToToday = moveToToday;
-  window._tomorrowSyncAndRender = function() {
-  const fresh = JSON.parse(localStorage.getItem(STORAGE_KEY)) || {};
-  SLOTS.forEach(s => { data[s] = normalize(fresh[s] || []); });
-  buildTmrwSidebar();
-  updateStats();
-  const active = getTmrwActiveSlot();
-  if (active && SLOTS.includes(active)) renderTmrwSlotContent(active);
-};
 
 function showToast(msg){
   const t=document.createElement("div");
