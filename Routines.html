@@ -966,9 +966,25 @@ function sortGroupsDoneToBottom(arr){
 }
 
 /* never let a drop land *inside* a parent's group — slide past its children */
-function subSafeInsert(arr,idx){
-  while(idx>0 && idx<arr.length && arr[idx] && !_isHdr(arr[idx]) && arr[idx].sub) idx++;
+function subSafeInsert(arr,idx,gSize){
+  // Only a whole family (parent + its subs) is barred from landing inside another family.
+  if((gSize||1) > 1){
+    while(idx>0 && idx<arr.length && arr[idx] && !_isHdr(arr[idx]) && arr[idx].sub) idx++;
+  }
+  // A single task may be dropped anywhere — including between two sub-tasks.
   return idx;
+}
+
+/* A lone task dropped among sub-tasks joins that family.
+   Also fires when it lands directly under a parent that already has children —
+   otherwise the new row would slot in top-level and steal them. */
+function subAdopt(arr,idx){
+  const it=arr[idx];
+  if(!it || _isHdr(it)) return;
+  const prev=arr[idx-1], next=arr[idx+1];
+  const afterSub  = prev && !_isHdr(prev) && prev.sub;
+  const beforeSub = next && !_isHdr(next) && next.sub;
+  if(afterSub || beforeSub) it.sub=true;
 }
 
 /* can item i be indented? (needs a task above it inside the same section) */
@@ -1481,8 +1497,8 @@ function renderContent(){
           insertAt=lastItem ? lastItem.globalIdx+1 : (sec.hdrIdx>=0 ? sec.hdrIdx+1 : arr.length);
         }
 
-        insertAt=subSafeInsert(arr,insertAt);
         const gSize=_taskDrag.groupSize||subGroupSize(arr,fromIndex);
+        insertAt=subSafeInsert(arr,insertAt,gSize);
         // no-op if dropping back inside its own group
         if(insertAt>=fromIndex && insertAt<=fromIndex+gSize){ _taskDrag=null; return; }
 
@@ -1490,6 +1506,7 @@ function renderContent(){
         const movedGroup=arr.splice(fromIndex,gSize);
         const adjustedInsert=fromIndex<insertAt ? insertAt-gSize : insertAt;
         arr.splice(adjustedInsert,0,...movedGroup);
+        if(gSize===1) subAdopt(arr,adjustedInsert);   // dropped among subs → becomes a sub
         subDemoteOrphans(arr);
         saveData(d2); _taskDrag=null; render();
       });
@@ -2220,10 +2237,12 @@ function renderSimpleContent(mode){
       const from=_simpleTaskDrag.fromIndex, gSize=_simpleTaskDrag.groupSize||1;
       _simpleTaskDrag=null;
       const d2=loadSimpleData(mode); const arr=d2[sec.id].items;
-      let to=subSafeInsert(arr,idx);
+      let to=subSafeInsert(arr,idx,gSize);
       if(to>=from && to<=from+gSize) return;   // dropped inside its own group
       const grp=arr.splice(from,gSize);
-      arr.splice(from<to?to-gSize:to,0,...grp);
+      const at=from<to?to-gSize:to;
+      arr.splice(at,0,...grp);
+      if(gSize===1) subAdopt(arr,at);   // dropped among subs → becomes a sub
       subDemoteOrphans(arr);
       saveSimpleData(mode,d2); renderSimple(mode);
     });
@@ -2587,10 +2606,12 @@ function renderWeeklyCard(dayId){
       _wkTaskDrag=null;
       const d2=loadWkData()||{days:[]}; const idx=d2.days.findIndex(x=>x.id===dayId); if(idx<0) return;
       const arr=d2.days[idx].items;
-      let to=subSafeInsert(arr,i);
+      let to=subSafeInsert(arr,i,gSize);
       if(to>=from && to<=from+gSize) return;   // dropped inside its own group
       const grp=arr.splice(from,gSize);
-      arr.splice(from<to?to-gSize:to,0,...grp);
+      const at=from<to?to-gSize:to;
+      arr.splice(at,0,...grp);
+      if(gSize===1) subAdopt(arr,at);   // dropped among subs → becomes a sub
       subDemoteOrphans(arr);
       saveWkData(d2); renderWeeklyCard(dayId); renderWeeklySidebar();
     });
