@@ -438,7 +438,7 @@ body.nav-is-collapsed #nav-show-tab { display: flex; align-items: center; gap: 5
           </div>
         </div>
         <div class="header-right">
-          <button class="btn btn-generate" onclick="meal_generate()" title="Overwrite this week from the Fridge and Pantry (Ctrl+Z undoes)">✨ Generate week</button>
+          <button class="btn btn-generate" onclick="meal_generate()" title="Generate meals from the Fridge and Pantry">✨ Generate</button>
           <button class="btn btn-ghost" onclick="meal_printBW()" title="Print black &amp; white / Save as PDF">🖨 Print</button>
           <button class="btn btn-print-color" onclick="meal_printColor()" title="Colour print">🎨 Colour Print</button>
           <input type="date" id="meal__exportDate" class="date-input">
@@ -463,6 +463,72 @@ body.nav-is-collapsed #nav-show-tab { display: flex; align-items: center; gap: 5
     <div id="meal__dayPortal">
       <div class="portal-title">Move to day</div>
       <div id="meal__dayPortalItems"></div>
+    </div>
+
+    <style>
+    #panel-meal .mp-ov { position:fixed; inset:0; background:rgba(20,18,16,0.42); z-index:9998; display:none; align-items:center; justify-content:center; }
+    #panel-meal .mp-ov.open { display:flex; }
+    #panel-meal .mp-dlg { background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); box-shadow:0 18px 50px rgba(0,0,0,0.28); width:380px; max-width:92vw; padding:20px 22px; font-family:'DM Sans',sans-serif; }
+    #panel-meal .mp-dlg h2 { font-family:'DM Serif Display',serif; font-size:19px; margin:0 0 4px; font-weight:400; color:var(--text); }
+    #panel-meal .mp-dlg .dlg-sub { font-size:12px; color:var(--text3); margin-bottom:16px; line-height:1.5; }
+    #panel-meal .mp-dlg .dlg-lbl { font-size:10px; letter-spacing:0.07em; text-transform:uppercase; color:var(--text3); font-weight:600; margin:0 0 8px; }
+    #panel-meal .mp-dlg .dlg-row { display:flex; align-items:center; gap:8px; font-size:13px; color:var(--text); padding:4px 0; cursor:pointer; }
+    #panel-meal .mp-dlg .dlg-sec { margin-bottom:16px; }
+    #panel-meal .mp-dlg select { font-family:'DM Sans',sans-serif; font-size:13px; padding:6px 8px; border:1px solid var(--border); border-radius:var(--radius-sm); background:var(--surface); color:var(--text); }
+    #panel-meal .mp-dlg .dlg-acts { display:flex; justify-content:flex-end; gap:8px; margin-top:20px; }
+    #panel-meal .mp-dlg .dlg-btn { font-family:'DM Sans',sans-serif; font-size:13px; padding:8px 16px; border-radius:var(--radius-md); border:1px solid var(--border); background:var(--surface); color:var(--text); cursor:pointer; }
+    #panel-meal .mp-dlg .dlg-btn.go { background:var(--accent); border-color:var(--accent); color:#fff; font-weight:600; }
+    #panel-meal .mp-dlg table.pv { width:100%; border-collapse:collapse; font-size:13px; }
+    #panel-meal .mp-dlg table.pv td { padding:8px 4px; border-bottom:1px solid var(--border); }
+    #panel-meal .mp-dlg td.pv-meal { color:var(--text3); font-size:11px; text-transform:uppercase; letter-spacing:0.05em; width:42%; }
+    #panel-meal .mp-dlg td.pv-dish { color:var(--text); }
+    #panel-meal .mp-dlg td.pv-insuf { color:#b03030; font-style:italic; }
+    </style>
+
+    <div class="mp-ov" id="meal__genDialog">
+      <div class="mp-dlg" role="dialog" aria-label="Generate meals">
+        <h2>Generate</h2>
+        <div class="dlg-sub" id="meal__genHint"></div>
+
+        <div class="dlg-sec">
+          <div class="dlg-lbl">Scope</div>
+          <label class="dlg-row"><input type="radio" name="meal__genScope" id="meal__genScopeWeek" checked onchange="meal_genScopeChanged()"> This week — write into the grid</label>
+          <label class="dlg-row"><input type="radio" name="meal__genScope" id="meal__genScopeDay" onchange="meal_genScopeChanged()"> A single day — just show me suggestions</label>
+          <div class="dlg-row" id="meal__genDayWrap" style="display:none;padding-left:22px;">
+            <select id="meal__genDay">
+              <option value="0">Monday</option><option value="1">Tuesday</option>
+              <option value="2">Wednesday</option><option value="3">Thursday</option>
+              <option value="4">Friday</option><option value="5">Saturday</option>
+              <option value="6">Sunday</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="dlg-sec">
+          <div class="dlg-lbl">Meals</div>
+          <label class="dlg-row"><input type="checkbox" id="meal__genB" checked> Breakfast</label>
+          <label class="dlg-row"><input type="checkbox" id="meal__genS1" checked> Snack 1</label>
+          <label class="dlg-row"><input type="checkbox" id="meal__genL" checked> Lunch</label>
+          <label class="dlg-row"><input type="checkbox" id="meal__genS2" checked> Snack 2</label>
+          <label class="dlg-row"><input type="checkbox" id="meal__genD" checked> Dinner</label>
+        </div>
+
+        <div class="dlg-acts">
+          <button class="dlg-btn" onclick="meal_genCancel()">Cancel</button>
+          <button class="dlg-btn go" id="meal__genGo" onclick="meal_genRun()">Generate</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="mp-ov" id="meal__preview">
+      <div class="mp-dlg" role="dialog" aria-label="Day suggestions">
+        <h2 id="meal__previewTitle">Suggestions</h2>
+        <div class="dlg-sub">Nothing has been written to the grid — copy anything you like across by hand.</div>
+        <table class="pv"><tbody id="meal__previewBody"></tbody></table>
+        <div class="dlg-acts">
+          <button class="dlg-btn go" onclick="meal_previewClose()">Close</button>
+        </div>
+      </div>
     </div>
 
     <div id="meal__toast"></div>
@@ -1294,17 +1360,76 @@ function meal_printColor() {
 }
 window.meal_printColor = meal_printColor;
 
-/* ── Generate ── */
+/* ── Generate: chooser, week write, single-day preview ── */
+const MEAL_ROWS = { B:"Breakfast", S1:"Snack Break 1", L:"Lunch", S2:"Snack Break 2", D:"Dinner" };
+
 function meal_generate() {
   if (typeof MP === "undefined") { alert("Meal planner data isn't loaded yet. Try again in a moment."); return; }
-  const plan = MP.generatePlan();
-  saveData(plan);
-  meal_render();
-  UndoManager.push('meal');
-  const blanks = Object.keys(plan).filter(k => ((plan[k][0]||{}).text || "").indexOf("Insufficient") === 0).length;
-  meal_showToast(blanks ? ("Week generated — " + blanks + " slot" + (blanks===1?"":"s") + " had nothing makeable") : "Week generated");
+  const sel = document.getElementById("meal__genDay");
+  const today = new Date();
+  const mon = meal_getMonday(today).getTime();
+  let di = 0;
+  if (mon === currentMonday.getTime()) { const g = today.getDay(); di = (g === 0 ? 6 : g - 1); }
+  if (sel) sel.value = String(di);
+  Object.keys(MEAL_ROWS).forEach(k => { const c = document.getElementById("meal__gen" + k); if (c) c.checked = true; });
+  const w = document.getElementById("meal__genScopeWeek"); if (w) w.checked = true;
+  meal_genScopeChanged();
+  const dlg = document.getElementById("meal__genDialog"); if (dlg) dlg.classList.add("open");
 }
 window.meal_generate = meal_generate;
+
+function meal_genScopeChanged() {
+  const isDay = document.getElementById("meal__genScopeDay").checked;
+  document.getElementById("meal__genDayWrap").style.display = isDay ? "flex" : "none";
+  document.getElementById("meal__genGo").textContent = isDay ? "Show suggestions" : "Generate";
+  document.getElementById("meal__genHint").textContent = isDay
+    ? "Suggestions only — the grid is not changed."
+    : "Ticked rows are overwritten. Everything else is left alone. Ctrl+Z undoes it.";
+}
+window.meal_genScopeChanged = meal_genScopeChanged;
+
+function meal_genCancel() { document.getElementById("meal__genDialog").classList.remove("open"); }
+window.meal_genCancel = meal_genCancel;
+function meal_previewClose() { document.getElementById("meal__preview").classList.remove("open"); }
+window.meal_previewClose = meal_previewClose;
+
+function meal_genRun() {
+  const isDay = document.getElementById("meal__genScopeDay").checked;
+  const meals = {};
+  Object.keys(MEAL_ROWS).forEach(k => { meals[k] = document.getElementById("meal__gen" + k).checked; });
+  if (!Object.keys(meals).some(k => meals[k])) { alert("Tick at least one meal."); return; }
+
+  const dayIdx = parseInt(document.getElementById("meal__genDay").value, 10) || 0;
+  const days = isDay ? [dayIdx] : [0,1,2,3,4,5,6];
+  const res = MP.generatePlan({ days: days, meals: meals, existing: loadData() });
+  meal_genCancel();
+
+  if (!isDay) {
+    saveData(res.data);
+    meal_render();
+    UndoManager.push('meal');
+    const blanks = Object.keys(res.picks).filter(k => res.picks[k].indexOf("Insufficient") === 0).length;
+    const n = Object.keys(res.picks).length;
+    meal_showToast(n + " cell" + (n===1?"":"s") + " generated" + (blanks ? " — " + blanks + " had nothing makeable" : ""));
+    return;
+  }
+
+  const day = DAYS[dayIdx];
+  const order = ["B","S1","L","S2","D"];
+  let rows = "";
+  order.forEach(k => {
+    if (!meals[k]) return;
+    const key = MEAL_ROWS[k] + "_" + day;
+    const val = res.picks[key];
+    if (val === undefined) return;
+    const insuf = val.indexOf("Insufficient") === 0;
+    rows += '<tr><td class="pv-meal">' + MEAL_ROWS[k] + '</td><td class="pv-dish' + (insuf ? ' pv-insuf' : '') + '">' + val + '</td></tr>';
+  });
+  document.getElementById("meal__previewTitle").textContent = day + " — suggestions";
+  document.getElementById("meal__previewBody").innerHTML = rows || '<tr><td colspan="2">Nothing selected.</td></tr>';
+  document.getElementById("meal__preview").classList.add("open");
+}
+window.meal_genRun = meal_genRun;
 
 /* ── Boot ── */
 OT.onReady(async () => {
@@ -1905,12 +2030,28 @@ function insufficientLabel(pool, av){
   return INSUF;
 }
 
-function generatePlan(){
+function cellText(existing, meal, day){
+  var a = existing[meal+"_"+day];
+  if(!a || !a.length) return "";
+  var t = a[0] && a[0].text;
+  return t || "";
+}
+function isInsuf(t){ return !t || t.indexOf("Insufficient")===0; }
+
+/* opts: { days:[0..6], meals:{B,S1,S2,L,D}, existing:{cellKey:[{text}]} }
+   Returns { data: full week (untouched cells preserved), picks: {cellKey:text} }.
+   Rows that aren't regenerated are still READ, so carry-overs and no-repeat
+   rules stay coherent against whatever is already sitting in the grid. */
+function generatePlan(opts){
+  opts = opts || {};
+  var days     = opts.days  || [0,1,2,3,4,5,6];
+  var meals    = opts.meals || {B:true,S1:true,S2:true,L:true,D:true};
+  var existing = opts.existing || {};
+  var inScope  = {}; days.forEach(function(i){ inScope[i]=1; });
+
   var m  = loadMaster();
   var av = availability();
   var isWeekend = function(i){ return i===5 || i===6; };
-  var data = {};
-  MEALS.forEach(function(meal){ DAYS.forEach(function(day){ data[meal+"_"+day]=[]; }); });
 
   var byName = {};
   m.recipes.forEach(function(r){ byName[r.name]=r; });
@@ -1918,30 +2059,54 @@ function generatePlan(){
 
   var dinnerAll = m.recipes.filter(function(r){ return r.slots && r.slots.D; });
   var lunchAll  = m.recipes.filter(function(r){ return r.slots && r.slots.L; });
-  var idli      = m.breakfast.filter(function(b){ return b.dinnerAfterSambar; });
+  var idliList  = m.breakfast.filter(function(b){ return b.dinnerAfterSambar; });
 
+  var picks = {};
+  var gen = function(i, mealSel){ return inScope[i] && mealSel; };
+
+  /* ── Dinners first: lunch and breakfast depend on them ── */
   var dinners = [], usedD = {};
   for(var i=0;i<7;i++){
+    if(!gen(i, meals.D)){
+      var keep = cellText(existing, "Dinner", DAYS[i]);
+      dinners.push(keep);
+      if(!isInsuf(keep)) usedD[keep] = 1;
+    } else dinners.push(null);
+  }
+  for(var i=0;i<7;i++){
+    if(dinners[i] !== null) continue;
     var prev = i>0 ? dinners[i-1] : null;
-    var sambarYesterday = (prev === "sambar");
     var cands = dinnerAll.filter(function(r){
       if(usedD[r.name]) return false;
       if(r.needsPrev && r.needsPrev !== prev) return false;
       if(r.weekendOnly && !isWeekend(i)) return false;
       return true;
     });
-    if(sambarYesterday) idli.forEach(function(b){ if(!usedD[b.name]) cands.push(b); });
+    if(prev === "sambar") idliList.forEach(function(b){ if(!usedD[b.name]) cands.push(b); });
     var ok = cands.filter(function(r){ return makeable(r, av); });
-    if(ok.length){ var c = pick(ok); dinners.push(c.name); usedD[c.name]=1; }
-    else dinners.push(insufficientLabel(cands, av));
+    if(ok.length){ var c = pick(ok); dinners[i] = c.name; usedD[c.name] = 1; }
+    else dinners[i] = insufficientLabel(cands, av);
+    picks["Dinner_"+DAYS[i]] = dinners[i];
   }
 
+  /* ── Lunches ── */
   var lunches = [], usedL = {};
   for(var i=0;i<7;i++){
+    if(!gen(i, meals.L)){
+      var keep = cellText(existing, "Lunch", DAYS[i]);
+      lunches.push(keep);
+      if(!isInsuf(keep)) usedL[keep] = 1;
+    } else lunches.push(null);
+  }
+  for(var i=0;i<7;i++){
+    if(lunches[i] !== null) continue;
     var prevD = i>0 ? dinners[i-1] : null;
     var prevR = prevD ? byName[prevD] : null;
-    if(prevR && prevR.slots && prevR.slots.L){ lunches.push(prevD); continue; }
-    var sambarYesterday = (prevD === "sambar");
+    if(prevR && prevR.slots && prevR.slots.L){
+      lunches[i] = prevD;
+      picks["Lunch_"+DAYS[i]] = prevD;
+      continue;
+    }
     var cands = lunchAll.filter(function(r){
       if(usedL[r.name]) return false;
       if(usedD[r.name]) return false;
@@ -1950,35 +2115,64 @@ function generatePlan(){
       return true;
     });
     var ok = cands.filter(function(r){ return makeable(r, av); });
-    if(ok.length){ var c = pick(ok); lunches.push(c.name); usedL[c.name]=1; }
-    else lunches.push(insufficientLabel(cands, av));
+    if(ok.length){ var c = pick(ok); lunches[i] = c.name; usedL[c.name] = 1; }
+    else lunches[i] = insufficientLabel(cands, av);
+    picks["Lunch_"+DAYS[i]] = lunches[i];
   }
 
+  /* ── Breakfasts ── */
   var breakfasts = [], usedB = {};
   for(var i=0;i<7;i++){
+    if(!gen(i, meals.B)){
+      var keep = cellText(existing, "Breakfast", DAYS[i]);
+      breakfasts.push(keep);
+      if(!isInsuf(keep)) usedB[keep] = 1;
+    } else breakfasts.push(null);
+  }
+  for(var i=0;i<7;i++){
+    if(breakfasts[i] !== null) continue;
     var prevD = i>0 ? dinners[i-1] : null;
     var prevR = prevD ? byName[prevD] : null;
-    if(prevR && prevR.slots && prevR.slots.B){ breakfasts.push(prevD); continue; }
+    if(prevR && prevR.slots && prevR.slots.B){
+      breakfasts[i] = prevD;
+      picks["Breakfast_"+DAYS[i]] = prevD;
+      continue;
+    }
     var cands = m.breakfast.filter(function(b){ return !usedB[b.name]; });
     var ok = cands.filter(function(b){ return makeable(b, av); });
-    if(ok.length){ var c = pick(ok); breakfasts.push(c.name); usedB[c.name]=1; }
-    else breakfasts.push(insufficientLabel(cands, av));
+    if(ok.length){ var c = pick(ok); breakfasts[i] = c.name; usedB[c.name] = 1; }
+    else breakfasts[i] = insufficientLabel(cands, av);
+    picks["Breakfast_"+DAYS[i]] = breakfasts[i];
   }
 
+  /* ── Snacks: the two slots are independent ── */
+  var s1 = [], s2 = [];
   for(var i=0;i<7;i++){
-    var day = DAYS[i];
-    var cands = m.snacks.filter(function(s){ return (!s.weekendOnly || isWeekend(i)) && makeable(s, av); });
-    var slot1 = cands.length ? pick(cands).name : INSUF;
-    var rest  = cands.filter(function(s){ return s.name !== slot1; });
-    var slot2 = rest.length ? pick(rest).name : (cands.length ? slot1 : INSUF);
-    var T = function(n){ return [{text:n}]; };
-    data["Snack Break 1_"+day] = T(slot1);
-    data["Snack Break 2_"+day] = T(slot2);
-    data["Breakfast_"+day] = T(breakfasts[i]);
-    data["Lunch_"+day]     = T(lunches[i]);
-    data["Dinner_"+day]    = T(dinners[i]);
+    var day  = DAYS[i];
+    var pool = m.snacks.filter(function(s){ return (!s.weekendOnly || isWeekend(i)) && makeable(s, av); });
+
+    if(gen(i, meals.S1)){
+      s1[i] = pool.length ? pick(pool).name : INSUF;
+      picks["Snack Break 1_"+day] = s1[i];
+    } else s1[i] = cellText(existing, "Snack Break 1", day);
+
+    if(gen(i, meals.S2)){
+      var rest = pool.filter(function(s){ return s.name !== s1[i]; });
+      s2[i] = rest.length ? pick(rest).name : (pool.length ? pool[0].name : INSUF);
+      picks["Snack Break 2_"+day] = s2[i];
+    } else s2[i] = cellText(existing, "Snack Break 2", day);
   }
-  return data;
+
+  /* ── Assemble: regenerated cells replaced, everything else preserved verbatim ── */
+  var data = {};
+  MEALS.forEach(function(meal){
+    DAYS.forEach(function(day){
+      var key = meal+"_"+day;
+      if(picks.hasOwnProperty(key)) data[key] = [{text:picks[key]}];
+      else data[key] = existing[key] ? JSON.parse(JSON.stringify(existing[key])) : [];
+    });
+  });
+  return {data:data, picks:picks};
 }
 
 window.MP = {
