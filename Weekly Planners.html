@@ -1086,6 +1086,16 @@ function meal_closeDayPortal() {
 
 
 
+function meal_dishNames() {
+  if (typeof MP === "undefined") return loadSuggestions();
+  const m = MP.loadMaster();
+  const names = []
+    .concat(m.recipes.map(r => r.name))
+    .concat(m.breakfast.map(b => b.name))
+    .concat(m.snacks.map(s => s.name));
+  return [...new Set(names)].sort();
+}
+
 function meal_render() {
   updateWeekLabel();
   // Update column headers with day + date
@@ -1119,107 +1129,83 @@ function meal_render() {
       if (!data[key]) data[key] = [];
       const cell = document.createElement("td");
 
-      cell.addEventListener("dragover", e => e.preventDefault());
-      cell.addEventListener("drop", e => {
-        e.preventDefault();
-        if (dragItem !== null) {
-          const item = data[dragKey].splice(dragItem, 1)[0];
-          data[key].push(item);
+      const count = Math.max(1, data[key].length);
+      for (let idx = 0; idx < count; idx++) {
+        const wrap = document.createElement("div");
+        wrap.className = "task";
+        wrap.style.position = "relative";
+
+        const tx = document.createElement("input");
+        tx.type = "text";
+        tx.value = data[key][idx] ? data[key][idx].text : "";
+        tx.placeholder = "—";
+        wrap.appendChild(tx);
+
+        const box = document.createElement("div");
+        box.className = "suggestions";
+        box.style.display = "none";
+        wrap.appendChild(box);
+
+        let sel = -1;
+
+        const store = () => {
+          const v = tx.value.trim();
+          if (v) {
+            if (data[key][idx]) data[key][idx].text = v;
+            else data[key][idx] = { text: v };
+          } else if (data[key][idx]) {
+            data[key][idx].text = "";
+          }
           saveData(data);
-          meal_render();
-        }
-      });
+        };
 
-      data[key].forEach((item, i) => {
-        const div = document.createElement("div");
-        div.className = "task";
-        div.draggable = true;
-        div.innerHTML = `
-          <span class="drag-handle">⋮⋮</span>
-          <input type="text" value="${item.text.replace(/"/g,'&quot;')}">
-          <button title="Move up" ${i===0?"disabled":""}>↑</button>
-          <button title="Move down" ${i===data[key].length-1?"disabled":""}>↓</button>
-          <button title="Remove">✕</button>
-        `;
+        const hide = () => { box.style.display = "none"; sel = -1; };
 
-        div.addEventListener("dragstart", () => { dragItem = i; dragKey = key; });
+        tx.addEventListener("input", () => {
+          store();
+          const v = tx.value.trim().toLowerCase();
+          const hits = v ? meal_dishNames().filter(s => s.toLowerCase().includes(v) && s.toLowerCase() !== v).slice(0, 8) : [];
+          box.innerHTML = "";
+          sel = -1;
+          if (!hits.length) { hide(); return; }
+          hits.forEach(s => {
+            const it = document.createElement("div");
+            it.className = "suggestion-item";
+            it.textContent = s;
+            it.onmousedown = e => { e.preventDefault(); tx.value = s; store(); hide(); };
+            box.appendChild(it);
+          });
+          box.style.display = "block";
+        });
 
-        const [tx, up, down] = div.querySelectorAll("input, button");
-        const delBtn     = div.querySelectorAll("button")[2];
+        tx.addEventListener("keydown", e => {
+          const items = box.querySelectorAll(".suggestion-item");
+          if (e.key === "ArrowDown" && items.length) { e.preventDefault(); if (sel < items.length - 1) sel++; }
+          else if (e.key === "ArrowUp" && items.length) { e.preventDefault(); if (sel > 0) sel--; }
+          else if (e.key === "Enter") {
+            e.preventDefault();
+            if (sel >= 0 && items[sel]) tx.value = items[sel].textContent;
+            store();
+            hide();
+            tx.blur();
+            return;
+          } else if (e.key === "Escape") { hide(); tx.blur(); return; }
+          items.forEach((it, n) => it.classList.toggle("active", n === sel));
+        });
 
-        tx.oninput    = e => { item.text = e.target.value; saveData(data); };
-        up.onclick    = () => { data[key].splice(i-1, 0, data[key].splice(i,1)[0]); saveData(data); meal_render(); };
-        down.onclick  = () => { data[key].splice(i+1, 0, data[key].splice(i,1)[0]); saveData(data); meal_render(); };
-        delBtn.onclick = () => { data[key].splice(i, 1); saveData(data); meal_render(); };
+        tx.addEventListener("blur", () => {
+          store();
+          hide();
+          if (!tx.value.trim() && data[key][idx]) {
+            data[key].splice(idx, 1);
+            saveData(data);
+            meal_render();
+          }
+        });
 
-        cell.appendChild(div);
-      });
-
-      if (data[key].length === 0) {
-        const empty = document.createElement("div");
-        empty.style.cssText = "padding:6px 2px;text-align:center;font-size:10px;color:var(--text3);font-style:italic;";
-        empty.textContent = "—";
-        cell.appendChild(empty);
+        cell.appendChild(wrap);
       }
 
-      const newRow = document.createElement("div");
-      newRow.className = "new-task";
-      const input = document.createElement("input");
-      input.placeholder = "Add item…";
-      newRow.appendChild(input);
-
-      const suggestionBox = document.createElement("div");
-      suggestionBox.className = "suggestions";
-      suggestionBox.style.display = "none";
-      newRow.appendChild(suggestionBox);
-
-      let selectedIndex = -1;
-
-      input.addEventListener("input", () => {
-        const val = input.value.toLowerCase();
-        const suggestions = loadSuggestions().filter(s => s.toLowerCase().includes(val));
-        suggestionBox.innerHTML = "";
-        selectedIndex = -1;
-        if (!val || suggestions.length === 0) { suggestionBox.style.display = "none"; return; }
-        suggestions.forEach((s, idx) => {
-          const item = document.createElement("div");
-          item.className = "suggestion-item";
-          item.innerHTML = `<span>${s}</span><span class="delete-suggestion">✕</span>`;
-          item.onclick = () => { input.value = s; suggestionBox.style.display = "none"; };
-          item.querySelector(".delete-suggestion").onclick = e => {
-            e.stopPropagation();
-            saveSuggestions(loadSuggestions().filter(x => x !== s));
-            meal_render();
-          };
-          suggestionBox.appendChild(item);
-        });
-        suggestionBox.style.display = "block";
-      });
-
-      input.addEventListener("keydown", e => {
-        const items = suggestionBox.querySelectorAll(".suggestion-item");
-        if (e.key === "ArrowDown") { if (selectedIndex < items.length-1) selectedIndex++; }
-        else if (e.key === "ArrowUp") { if (selectedIndex > 0) selectedIndex--; }
-        else if (e.key === "Enter") {
-          if (selectedIndex >= 0) input.value = items[selectedIndex].querySelector("span").innerText;
-          const val = input.value.trim();
-          if (!val) return;
-          const capVal = val.charAt(0).toUpperCase() + val.slice(1);
-          data[key].push({ text: capVal });
-          saveData(data);
-          if (!loadSuggestions().includes(capVal)) {
-            const list = loadSuggestions(); list.push(capVal); saveSuggestions(list);
-          }
-          meal_render();
-        } else if (e.key === "Escape") {
-          input.value = "";
-          suggestionBox.style.display = "none";
-          input.blur();
-        }
-        items.forEach((it, idx) => it.classList.toggle("active", idx === selectedIndex));
-      });
-
-      cell.appendChild(newRow);
       row.appendChild(cell);
     });
 
