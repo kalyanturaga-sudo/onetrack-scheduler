@@ -1301,7 +1301,7 @@ function meal_generate() {
   saveData(plan);
   meal_render();
   UndoManager.push('meal');
-  const blanks = Object.keys(plan).filter(k => (plan[k][0] || "").indexOf("Insufficient") === 0).length;
+  const blanks = Object.keys(plan).filter(k => ((plan[k][0]||{}).text || "").indexOf("Insufficient") === 0).length;
   meal_showToast(blanks ? ("Week generated — " + blanks + " slot" + (blanks===1?"":"s") + " had nothing makeable") : "Week generated");
 }
 window.meal_generate = meal_generate;
@@ -1971,11 +1971,12 @@ function generatePlan(){
     var slot1 = cands.length ? pick(cands).name : INSUF;
     var rest  = cands.filter(function(s){ return s.name !== slot1; });
     var slot2 = rest.length ? pick(rest).name : (cands.length ? slot1 : INSUF);
-    data["Snack Break 1_"+day] = [slot1];
-    data["Snack Break 2_"+day] = [slot2];
-    data["Breakfast_"+day] = [breakfasts[i]];
-    data["Lunch_"+day]     = [lunches[i]];
-    data["Dinner_"+day]    = [dinners[i]];
+    var T = function(n){ return [{text:n}]; };
+    data["Snack Break 1_"+day] = T(slot1);
+    data["Snack Break 2_"+day] = T(slot2);
+    data["Breakfast_"+day] = T(breakfasts[i]);
+    data["Lunch_"+day]     = T(lunches[i]);
+    data["Dinner_"+day]    = T(dinners[i]);
   }
   return data;
 }
