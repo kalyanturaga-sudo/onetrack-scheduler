@@ -430,7 +430,7 @@ body.nav-is-collapsed #nav-show-tab { display: flex; align-items: center; gap: 5
       <div class="header">
         <div class="header-left">
           <h1>Weekly Meal Planner</h1>
-          <div class="subtitle">Plan your meals for the week</div>
+          <div class="subtitle">Generated from what's in your Fridge and Pantry</div>
           <div style="display:flex;align-items:center;gap:10px;margin-top:8px;">
             <button class="week-nav" onclick="meal_changeWeek(-1)">◀</button>
             <span id="meal__weekLabel" style="font-size:13px;color:var(--text2);font-weight:500;"></span>
@@ -438,6 +438,7 @@ body.nav-is-collapsed #nav-show-tab { display: flex; align-items: center; gap: 5
           </div>
         </div>
         <div class="header-right">
+          <button class="btn btn-generate" onclick="meal_generate()" title="Overwrite this week from the Fridge and Pantry (Ctrl+Z undoes)">✨ Generate week</button>
           <button class="btn btn-ghost" onclick="meal_printBW()" title="Print black &amp; white / Save as PDF">🖨 Print</button>
           <button class="btn btn-print-color" onclick="meal_printColor()" title="Colour print">🎨 Colour Print</button>
           <input type="date" id="meal__exportDate" class="date-input">
@@ -501,6 +502,133 @@ body.nav-is-collapsed #nav-show-tab { display: flex; align-items: center; gap: 5
       </table>
     </div>
   </div><!-- /panel-exer -->
+
+  <!-- ===== MEAL PLANNER PANELS ===== -->
+  <style>
+  .mp-panel { font-family:'DM Sans',sans-serif; background:var(--bg); color:var(--text); }
+  .mp-panel .main { padding:22px 28px; overflow-y:auto; height:100%; }
+  .mp-panel h1 { font-family:'DM Serif Display',serif; font-size:24px; margin:0; color:var(--text); font-weight:400; }
+  .mp-panel .subtitle { font-size:13px; color:var(--text3); margin-top:4px; }
+  .mp-panel .mp-head { display:flex; align-items:flex-start; justify-content:space-between; gap:12px; margin-bottom:18px; flex-wrap:wrap; }
+  .mp-panel .mp-btn { font-family:'DM Sans',sans-serif; font-size:12px; padding:7px 12px; border-radius:var(--radius-md); border:1px solid var(--border); background:var(--surface); color:var(--text); cursor:pointer; }
+  .mp-panel .mp-btn:hover { background:var(--surface2); }
+  .mp-panel .mp-btn.accent { background:var(--accent); color:#fff; border-color:var(--accent); }
+  .mp-panel .mp-btn.danger { color:#b03030; border-color:#e0b0b0; }
+  .mp-panel .mp-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(190px,1fr)); gap:14px; }
+  .mp-panel .mp-card { background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); padding:14px 16px; }
+  .mp-panel .mp-card h3 { font-size:11px; letter-spacing:0.06em; text-transform:uppercase; color:var(--text3); margin:0 0 10px; font-weight:600; }
+  .mp-panel .mp-chk { display:flex; align-items:center; gap:8px; font-size:13px; padding:4px 0; cursor:pointer; }
+  .mp-panel .mp-chk .tel { color:var(--text3); font-size:12px; }
+  .mp-panel table.mp-tbl { width:100%; border-collapse:collapse; font-size:12px; }
+  .mp-panel table.mp-tbl th { text-align:left; font-size:10px; letter-spacing:0.06em; text-transform:uppercase; color:var(--text3); padding:8px 6px; border-bottom:1px solid var(--border); font-weight:600; }
+  .mp-panel table.mp-tbl td { padding:5px 6px; border-bottom:1px solid var(--border); vertical-align:middle; }
+  .mp-panel table.mp-tbl input[type=text] { width:100%; font-family:'DM Sans',sans-serif; font-size:12px; padding:5px 7px; border:1px solid transparent; border-radius:var(--radius-sm); background:transparent; color:var(--text); }
+  .mp-panel table.mp-tbl input[type=text]:hover { border-color:var(--border); }
+  .mp-panel table.mp-tbl input[type=text]:focus { border-color:var(--accent); background:var(--surface); outline:none; }
+  .mp-panel table.mp-tbl input.bad { border-color:#d06060; background:rgba(208,96,96,0.08); }
+  .mp-panel table.mp-tbl select { font-family:'DM Sans',sans-serif; font-size:12px; padding:4px 6px; border:1px solid var(--border); border-radius:var(--radius-sm); background:var(--surface); color:var(--text); }
+  .mp-panel .slotbox { display:flex; gap:7px; align-items:center; }
+  .mp-panel .slotbox label { font-size:11px; display:flex; align-items:center; gap:2px; color:var(--text2); cursor:pointer; }
+  .mp-panel .rowdel { border:none; background:none; color:var(--text3); cursor:pointer; font-size:14px; padding:2px 5px; border-radius:var(--radius-sm); }
+  .mp-panel .rowdel:hover { color:#b03030; background:var(--surface2); }
+  .mp-panel .mp-note { font-size:12px; color:var(--text3); margin-top:14px; line-height:1.6; }
+  .mp-panel .mp-count { font-size:12px; color:var(--text3); }
+  #panel-meal .btn-generate { background:var(--accent); color:#fff; border-color:var(--accent); font-weight:600; }
+  </style>
+
+  <div class="panel mp-panel" id="panel-fridge">
+    <div class="main">
+      <div class="mp-head">
+        <div><h1>Fridge</h1><div class="subtitle">Tick what you actually have. Everything else won't be planned.</div></div>
+        <div style="display:flex;gap:8px;">
+          <button class="mp-btn" onclick="fridge_selectAll()">Select all</button>
+          <button class="mp-btn" onclick="fridge_clearAll()">Clear all</button>
+        </div>
+      </div>
+      <div class="mp-grid" id="fridge__groups"></div>
+      <div class="mp-note" id="fridge__always"></div>
+    </div>
+  </div><!-- /panel-fridge -->
+
+  <div class="panel mp-panel" id="panel-pantry">
+    <div class="main">
+      <div class="mp-head">
+        <div><h1>Pantry</h1><div class="subtitle">Staples in stock. Unticking one removes every dish that needs it.</div></div>
+        <div style="display:flex;gap:8px;">
+          <button class="mp-btn" onclick="pantry_selectAll()">Select all</button>
+          <button class="mp-btn" onclick="pantry_clearAll()">Clear all</button>
+          <button class="mp-btn" onclick="pantry_addItem()">+ Add staple</button>
+          <button class="mp-btn danger" onclick="pantry_restore()">Restore defaults</button>
+        </div>
+      </div>
+      <div class="mp-grid" id="pantry__stock"></div>
+      <div class="mp-note">Rice, dal, moong dal, oil, spices, tamarind, curd and shop-bought snacks are assumed always on hand and aren't listed.</div>
+    </div>
+  </div><!-- /panel-pantry -->
+
+  <div class="panel mp-panel" id="panel-veg">
+    <div class="main">
+      <div class="mp-head">
+        <div><h1>Veggies</h1><div class="subtitle"><span class="mp-count" id="veg__count"></span></div></div>
+        <div style="display:flex;gap:8px;">
+          <button class="mp-btn" onclick="veg_add()">+ Add veggie</button>
+          <button class="mp-btn danger" onclick="veg_restore()">Restore defaults</button>
+        </div>
+      </div>
+      <table class="mp-tbl"><thead><tr>
+        <th style="width:28%">Name</th><th style="width:20%">Telugu</th><th style="width:22%">Group</th><th style="width:22%">Always on hand</th><th style="width:8%"></th>
+      </tr></thead><tbody id="veg__body"></tbody></table>
+      <div class="mp-note">Always-on veggies never appear in the Fridge and never gate a dish.</div>
+    </div>
+  </div><!-- /panel-veg -->
+
+  <div class="panel mp-panel" id="panel-rec">
+    <div class="main">
+      <div class="mp-head">
+        <div><h1>Recipes</h1><div class="subtitle"><span class="mp-count" id="rec__count"></span></div></div>
+        <div style="display:flex;gap:8px;">
+          <button class="mp-btn" onclick="rec_add()">+ Add dish</button>
+          <button class="mp-btn danger" onclick="rec_restore()">Restore defaults</button>
+        </div>
+      </div>
+      <table class="mp-tbl"><thead><tr>
+        <th style="width:20%">Dish</th><th style="width:13%">Category</th><th style="width:22%">Needs veggies</th><th style="width:19%">Needs staples</th><th style="width:20%">B / L / D / K</th><th style="width:6%"></th>
+      </tr></thead><tbody id="rec__body"></tbody></table>
+      <div class="mp-note">Comma-separate ingredients. Red means the name doesn't match anything in Veggies or Pantry. B = breakfast leftovers, K = kids' tiffin (recorded, not yet planned).</div>
+    </div>
+  </div><!-- /panel-rec -->
+
+  <div class="panel mp-panel" id="panel-brek">
+    <div class="main">
+      <div class="mp-head">
+        <div><h1>Breakfast</h1><div class="subtitle"><span class="mp-count" id="brek__count"></span></div></div>
+        <div style="display:flex;gap:8px;">
+          <button class="mp-btn" onclick="brek_add()">+ Add breakfast</button>
+          <button class="mp-btn danger" onclick="brek_restore()">Restore defaults</button>
+        </div>
+      </div>
+      <table class="mp-tbl"><thead><tr>
+        <th style="width:26%">Dish</th><th style="width:26%">Needs veggies</th><th style="width:26%">Needs staples</th><th style="width:16%">Dinner after sambar</th><th style="width:6%"></th>
+      </tr></thead><tbody id="brek__body"></tbody></table>
+      <div class="mp-note">Sandwiches aren't here — they're dinner dishes in Recipes whose leftovers carry into breakfast.</div>
+    </div>
+  </div><!-- /panel-brek -->
+
+  <div class="panel mp-panel" id="panel-snk">
+    <div class="main">
+      <div class="mp-head">
+        <div><h1>Snacks</h1><div class="subtitle"><span class="mp-count" id="snk__count"></span></div></div>
+        <div style="display:flex;gap:8px;">
+          <button class="mp-btn" onclick="snk_add()">+ Add snack</button>
+          <button class="mp-btn danger" onclick="snk_restore()">Restore defaults</button>
+        </div>
+      </div>
+      <table class="mp-tbl"><thead><tr>
+        <th style="width:26%">Snack</th><th style="width:26%">Needs veggies</th><th style="width:26%">Needs staples</th><th style="width:16%">Weekend only</th><th style="width:6%"></th>
+      </tr></thead><tbody id="snk__body"></tbody></table>
+      <div class="mp-note" id="snk__math"></div>
+    </div>
+  </div><!-- /panel-snk -->
 
 </div><!-- /panels -->
 
@@ -609,8 +737,14 @@ OT.onReady(async () => {
   const TABS_ACTIVE_KEY = "WEEKLY_PLANNERS_TAB_ACTIVE";
   const TABS_LABELS_KEY = "WEEKLY_PLANNERS_TAB_LABELS";
   const DEFAULT_TABS = [
-    { id: "meal", label: "🍽 Meal Planner" },
-    { id: "exer", label: "🏋 Exercise Plan" }
+    { id: "meal",   label: "🍽 Planner" },
+    { id: "fridge", label: "🧊 Fridge" },
+    { id: "rec",    label: "📖 Recipes" },
+    { id: "veg",    label: "🥕 Veggies" },
+    { id: "pantry", label: "🫙 Pantry" },
+    { id: "brek",   label: "🍳 Breakfast" },
+    { id: "snk",    label: "🥨 Snacks" },
+    { id: "exer",   label: "🏋 Exercise Plan" }
   ];
 
   // Custom labels (for rename)
@@ -740,7 +874,19 @@ OT.onReady(async () => {
       } catch(e){}
       return DEFAULT_TABS.map(t => t.id);
     })();
+    /* One-time migration: an existing saved tabOrder predates the meal-planner
+       tabs, so merge the new default ids in. Runs once; after that the user's
+       own ordering and hidden tabs are respected. */
+    if (!_cget("MEALPLAN_TABS_MIGRATED_V1")) {
+      const merged = [];
+      DEFAULT_TABS.forEach(t => { if (merged.indexOf(t.id) < 0) merged.push(t.id); });
+      tabOrder.forEach(id => { if (merged.indexOf(id) < 0) merged.push(id); });
+      tabOrder = merged;
+      _cset(TABS_ORDER_KEY, JSON.stringify(tabOrder));
+      _cset("MEALPLAN_TABS_MIGRATED_V1", "1");
+    }
     activeTab = _cget(TABS_ACTIVE_KEY) || tabOrder[0];
+    if (tabOrder.indexOf(activeTab) < 0) activeTab = tabOrder[0];
     renderTabs();
     activatePanel(activeTab);
   });
@@ -750,8 +896,8 @@ OT.onReady(async () => {
 <!-- ===== MEAL PLANNER JS ===== -->
 <script>
 (function(){
-const STORAGE_KEY  = "WEEKLY_MASTER_V1";
-const SUGGEST_KEY  = "WEEKLY_MASTER_SUGGEST_V1";
+const STORAGE_KEY  = "MEALPLAN_PLAN_V1";
+const SUGGEST_KEY  = "MEALPLAN_SUGGEST_V1";
 const DAYS  = ["Monday","Tuesday","Wednesday","Thursday","Friday","Saturday","Sunday"];
 const MEALS = ["Breakfast","Snack Break 1","Lunch","Snack Break 2","Dinner"];
 
@@ -1148,6 +1294,18 @@ function meal_printColor() {
 }
 window.meal_printColor = meal_printColor;
 
+/* ── Generate ── */
+function meal_generate() {
+  if (typeof MP === "undefined") { alert("Meal planner data isn't loaded yet. Try again in a moment."); return; }
+  const plan = MP.generatePlan();
+  saveData(plan);
+  meal_render();
+  UndoManager.push('meal');
+  const blanks = Object.keys(plan).filter(k => (plan[k][0] || "").indexOf("Insufficient") === 0).length;
+  meal_showToast(blanks ? ("Week generated — " + blanks + " slot" + (blanks===1?"":"s") + " had nothing makeable") : "Week generated");
+}
+window.meal_generate = meal_generate;
+
 /* ── Boot ── */
 OT.onReady(async () => {
   if(!Object.keys(_otCache).length) _otCache = await OT.getAll();
@@ -1527,6 +1685,658 @@ OT.onReady(async () => {
   } else {
     fillBrandName();
   }
+})();
+</script>
+<script>
+/* ===== MEAL PLANNER CORE ===== */
+(function(){
+const MASTER_KEY = "MEALPLAN_MASTER_V1";
+const FRIDGE_KEY = "MEALPLAN_FRIDGE_V1";
+const PANTRY_KEY = "MEALPLAN_PANTRY_V1";
+const MIGRATE_KEY = "MEALPLAN_TABS_MIGRATED_V1";
+
+const DAYS  = ["Monday","Tuesday","Wednesday","Thursday","Friday","Saturday","Sunday"];
+const MEALS = ["Breakfast","Snack Break 1","Lunch","Snack Break 2","Dinner"];
+
+const G_GOURD="Gourds", G_GREEN="Greens", G_ROOT="Roots and tubers", G_OTHER="Others";
+
+const SEED_VEGGIES = [
+  {name:"bottle gourd",    telugu:"సొరకాయ",  alwaysOn:false, group:G_GOURD},
+  {name:"ridge gourd",     telugu:"బీరకాయ",  alwaysOn:false, group:G_GOURD},
+  {name:"bitter gourd",    telugu:"కాకరకాయ", alwaysOn:false, group:G_GOURD},
+  {name:"snake gourd",     telugu:"పొట్లకాయ", alwaysOn:false, group:G_GOURD},
+  {name:"ivy gourd",       telugu:"దొండకాయ", alwaysOn:false, group:G_GOURD},
+  {name:"yellow cucumber", telugu:"దోసకాయ",  alwaysOn:false, group:G_GOURD},
+  {name:"spinach",    telugu:"", alwaysOn:false, group:G_GREEN},
+  {name:"thotakura",  telugu:"", alwaysOn:false, group:G_GREEN},
+  {name:"menthikura", telugu:"", alwaysOn:false, group:G_GREEN},
+  {name:"chukkakura", telugu:"", alwaysOn:false, group:G_GREEN},
+  {name:"potato",      telugu:"", alwaysOn:false, group:G_ROOT},
+  {name:"chama gadda", telugu:"", alwaysOn:false, group:G_ROOT},
+  {name:"carrot",      telugu:"", alwaysOn:false, group:G_ROOT},
+  {name:"beetroot",    telugu:"", alwaysOn:false, group:G_ROOT},
+  {name:"raw banana",  telugu:"", alwaysOn:false, group:G_ROOT},
+  {name:"green beans", telugu:"", alwaysOn:false, group:G_OTHER},
+  {name:"cabbage",     telugu:"", alwaysOn:false, group:G_OTHER},
+  {name:"cauliflower", telugu:"", alwaysOn:false, group:G_OTHER},
+  {name:"brinjal",     telugu:"", alwaysOn:false, group:G_OTHER},
+  {name:"okra",        telugu:"", alwaysOn:false, group:G_OTHER},
+  {name:"capsicum",    telugu:"", alwaysOn:false, group:G_OTHER},
+  {name:"avocado",     telugu:"", alwaysOn:false, group:G_OTHER},
+  {name:"onion",          telugu:"", alwaysOn:true, group:G_OTHER},
+  {name:"tomato",         telugu:"", alwaysOn:true, group:G_OTHER},
+  {name:"peas",           telugu:"", alwaysOn:true, group:G_OTHER},
+  {name:"mushrooms",      telugu:"", alwaysOn:true, group:G_OTHER},
+  {name:"pumpkin",        telugu:"", alwaysOn:true, group:G_OTHER},
+  {name:"eggs",           telugu:"", alwaysOn:true, group:G_OTHER},
+  {name:"paneer",         telugu:"", alwaysOn:true, group:G_OTHER},
+  {name:"green chillies", telugu:"", alwaysOn:true, group:G_OTHER},
+  {name:"ginger-garlic",  telugu:"", alwaysOn:true, group:G_OTHER},
+  {name:"curry leaves",   telugu:"", alwaysOn:true, group:G_OTHER},
+  {name:"cilantro",       telugu:"", alwaysOn:true, group:G_OTHER},
+  {name:"mint",           telugu:"", alwaysOn:true, group:G_OTHER}
+];
+
+const SEED_PANTRY = ["Beans (in Tin)","rice flour","aata","besan","idli rava","upma rava/sooji",
+  "vermicelli","sabudana","poha/atukulu","bread","tortilla wraps","pita","noodles","whole moong dal"]
+  .map(n=>({name:n}));
+
+function R(id,name,category,veggies,pantry,slots,extra){
+  return Object.assign({id:id,name:name,category:category,veggies:veggies,pantry:pantry,slots:slots},extra||{});
+}
+const LD  = {B:false,L:true,D:true,K:false};
+const LDK = {B:false,L:true,D:true,K:true};
+const BDK = {B:true, L:false,D:true,K:true};
+const DO  = {B:false,L:false,D:true,K:false};
+
+const SEED_RECIPES = [
+  R("r01","okra wet curry","wet curry",["okra"],[],LD),
+  R("r02","potato wet curry","wet curry",["potato"],[],LD),
+  R("r03","cauliflower wet curry","wet curry",["cauliflower"],[],LD),
+  R("r04","cabbage wet curry","wet curry",["cabbage"],[],LD),
+  R("r05","carrot wet curry","wet curry",["carrot"],[],LD),
+  R("r06","chukkakura wet curry","wet curry",["chukkakura"],[],LD),
+  R("r07","kadai paneer","wet curry",["capsicum"],[],LD),
+  R("r08","boiled egg curry","wet curry",[],[],LD),
+  R("r09","egg burji","wet curry",[],[],LD),
+  R("r10","carrot + green beans curry","wet curry",["carrot","green beans"],[],LD),
+  R("r11","methi + potato curry","wet curry",["menthikura","potato"],[],LD),
+  R("r12","thotakura pulusu","wet curry",["thotakura"],[],LD),
+  R("r13","gongura pulusu","wet curry",["chukkakura"],[],LD),
+  R("r14","rajma","wet curry",[],["Beans (in Tin)"],LD),
+  R("r15","chole","wet curry",[],["Beans (in Tin)"],LD),
+  R("r16","mixed beans","wet curry",[],["Beans (in Tin)"],LD),
+  R("r17","okra fry","dry curry",["okra"],[],LD),
+  R("r18","brinjal fry","dry curry",["brinjal"],[],LD),
+  R("r19","bitter gourd fry","dry curry",["bitter gourd"],[],LD),
+  R("r20","ivy gourd fry","dry curry",["ivy gourd"],[],LD),
+  R("r21","green beans fry","dry curry",["green beans"],[],LD),
+  R("r22","beetroot fry","dry curry",["beetroot"],[],LD),
+  R("r23","raw banana fry","dry curry",["raw banana"],[],LD),
+  R("r24","chama gadda fry","dry curry",["chama gadda"],[],LD),
+  R("r25","potato fry","dry curry",["potato"],[],LD),
+  R("r26","potato + capsicum fry","dry curry",["potato","capsicum"],[],LD),
+  R("r27","bottle gourd dal","dal",["bottle gourd"],[],LD),
+  R("r28","ridge gourd dal","dal",["ridge gourd"],[],LD),
+  R("r29","yellow cucumber dal","dal",["yellow cucumber"],[],LD),
+  R("r30","spinach dal","dal",["spinach"],[],LD),
+  R("r31","thotakura dal","dal",["thotakura"],[],LD),
+  R("r32","menthikura dal","dal",["menthikura"],[],LD),
+  R("r33","chukkakura dal","dal",["chukkakura"],[],LD),
+  R("r34","sambar","liquid",["carrot"],[],LD),
+  R("r35","rasam","liquid",[],[],LD),
+  R("r36","majjiga pulusu","liquid",[],[],LD),
+  R("r37","sambar rice","liquid",[],[],LD,{needsPrev:"sambar"}),
+  R("r38","snake gourd perugu pachadi","chutney",["snake gourd"],[],LD),
+  R("r39","avocado sandwich","other",["avocado"],["bread"],BDK),
+  R("r40","potato sandwich","other",["potato"],["bread"],BDK),
+  R("r41","paneer sandwich","other",[],["bread"],BDK),
+  R("r42","pav bhaji","other",["potato","cauliflower","capsicum"],[],LD),
+  R("r43","noodles","other",[],["noodles"],LDK),
+  R("r44","burrito","other",[],["tortilla wraps"],LDK),
+  R("r45","pita pockets","other",[],["pita"],DO)
+];
+
+const SEED_BREAKFAST = [
+  {name:"idli",            veggies:[],          pantry:["idli rava"],       dinnerAfterSambar:true},
+  {name:"dosa",            veggies:[],          pantry:["rice flour"]},
+  {name:"pesarattu",       veggies:[],          pantry:["whole moong dal"]},
+  {name:"poori",           veggies:[],          pantry:["aata"]},
+  {name:"upma",            veggies:[],          pantry:["upma rava/sooji"]},
+  {name:"rava upma",       veggies:[],          pantry:["upma rava/sooji"]},
+  {name:"tomato upma",     veggies:[],          pantry:["upma rava/sooji"]},
+  {name:"vermicelli upma", veggies:[],          pantry:["vermicelli"]},
+  {name:"sabudana upma",   veggies:[],          pantry:["sabudana"]},
+  {name:"atukula upma",    veggies:[],          pantry:["poha/atukulu"]},
+  {name:"pongal",          veggies:[],          pantry:[]},
+  {name:"vangi baath",     veggies:["brinjal"], pantry:[]},
+  {name:"cornflakes",      veggies:[],          pantry:[]}
+];
+
+const SEED_SNACKS = [
+  {name:"mirchi bajji",    veggies:[],             pantry:["besan"],      weekendOnly:true},
+  {name:"aratikaya bajji", veggies:["raw banana"], pantry:["besan"],      weekendOnly:true},
+  {name:"brinjal bajji",   veggies:["brinjal"],    pantry:["besan"],      weekendOnly:true},
+  {name:"punugulu",        veggies:[],             pantry:["rice flour"], weekendOnly:false},
+  {name:"maggi",           veggies:[],             pantry:[],             weekendOnly:false},
+  {name:"knorr soup",      veggies:[],             pantry:[],             weekendOnly:false},
+  {name:"pani puri",       veggies:[],             pantry:[],             weekendOnly:false},
+  {name:"veg puffs",       veggies:[],             pantry:[],             weekendOnly:false}
+];
+
+function seedMaster(){
+  return { veggies:JSON.parse(JSON.stringify(SEED_VEGGIES)),
+           pantry:JSON.parse(JSON.stringify(SEED_PANTRY)),
+           recipes:JSON.parse(JSON.stringify(SEED_RECIPES)),
+           breakfast:JSON.parse(JSON.stringify(SEED_BREAKFAST)),
+           snacks:JSON.parse(JSON.stringify(SEED_SNACKS)) };
+}
+
+function loadMaster(){
+  var raw = _cget(MASTER_KEY);
+  if(!raw){ var m = seedMaster(); _cset(MASTER_KEY, JSON.stringify(m)); return m; }
+  try {
+    var m = JSON.parse(raw);
+    if(!m.veggies)   m.veggies   = JSON.parse(JSON.stringify(SEED_VEGGIES));
+    if(!m.pantry)    m.pantry    = JSON.parse(JSON.stringify(SEED_PANTRY));
+    if(!m.recipes)   m.recipes   = JSON.parse(JSON.stringify(SEED_RECIPES));
+    if(!m.breakfast) m.breakfast = JSON.parse(JSON.stringify(SEED_BREAKFAST));
+    if(!m.snacks)    m.snacks    = JSON.parse(JSON.stringify(SEED_SNACKS));
+    return m;
+  } catch(e){ return seedMaster(); }
+}
+function saveMaster(m){ _cset(MASTER_KEY, JSON.stringify(m)); }
+
+function loadTicks(key, seedNames){
+  var raw = _cget(key);
+  if(raw===null || raw===undefined){ _cset(key, JSON.stringify(seedNames)); return seedNames.slice(); }
+  try { var a = JSON.parse(raw); return Array.isArray(a) ? a : seedNames.slice(); }
+  catch(e){ return seedNames.slice(); }
+}
+function loadFridge(){
+  var m = loadMaster();
+  var plannable = m.veggies.filter(function(v){return !v.alwaysOn;}).map(function(v){return v.name;});
+  var ticks = loadTicks(FRIDGE_KEY, plannable);
+  var valid = {}; m.veggies.forEach(function(v){ valid[v.name]=1; });
+  return ticks.filter(function(n){ return valid[n]; });
+}
+function saveFridge(a){ _cset(FRIDGE_KEY, JSON.stringify(a)); }
+function loadPantryStock(){
+  var m = loadMaster();
+  var all = m.pantry.map(function(p){return p.name;});
+  var ticks = loadTicks(PANTRY_KEY, all);
+  var valid = {}; all.forEach(function(n){ valid[n]=1; });
+  return ticks.filter(function(n){ return valid[n]; });
+}
+function savePantryStock(a){ _cset(PANTRY_KEY, JSON.stringify(a)); }
+
+function availability(){
+  var m = loadMaster();
+  var veg = {}, pan = {};
+  m.veggies.forEach(function(v){ if(v.alwaysOn) veg[v.name]=1; });
+  loadFridge().forEach(function(n){ veg[n]=1; });
+  loadPantryStock().forEach(function(n){ pan[n]=1; });
+  return {veg:veg, pan:pan};
+}
+function makeable(item, av){
+  var vs = item.veggies||[], ps = item.pantry||[];
+  for(var i=0;i<vs.length;i++) if(!av.veg[vs[i]]) return false;
+  for(var j=0;j<ps.length;j++) if(!av.pan[ps[j]]) return false;
+  return true;
+}
+function whyNot(item, av){
+  var vs = item.veggies||[], ps = item.pantry||[];
+  for(var i=0;i<vs.length;i++) if(!av.veg[vs[i]]) return "veg";
+  for(var j=0;j<ps.length;j++) if(!av.pan[ps[j]]) return "pan";
+  return null;
+}
+function pick(arr){ return arr[Math.floor(Math.random()*arr.length)]; }
+
+const INSUF_V = "Insufficient veggies";
+const INSUF_P = "Insufficient pantry";
+const INSUF   = "Insufficient";
+
+function insufficientLabel(pool, av){
+  if(!pool.length) return INSUF;
+  var v=0,p=0;
+  pool.forEach(function(it){ var w=whyNot(it,av); if(w==="veg")v++; else if(w==="pan")p++; });
+  if(v && !p) return INSUF_V;
+  if(p && !v) return INSUF_P;
+  return INSUF;
+}
+
+function generatePlan(){
+  var m  = loadMaster();
+  var av = availability();
+  var isWeekend = function(i){ return i===5 || i===6; };
+  var data = {};
+  MEALS.forEach(function(meal){ DAYS.forEach(function(day){ data[meal+"_"+day]=[]; }); });
+
+  var byName = {};
+  m.recipes.forEach(function(r){ byName[r.name]=r; });
+  m.breakfast.forEach(function(b){ if(!byName[b.name]) byName[b.name]=b; });
+
+  var dinnerAll = m.recipes.filter(function(r){ return r.slots && r.slots.D; });
+  var lunchAll  = m.recipes.filter(function(r){ return r.slots && r.slots.L; });
+  var idli      = m.breakfast.filter(function(b){ return b.dinnerAfterSambar; });
+
+  var dinners = [], usedD = {};
+  for(var i=0;i<7;i++){
+    var prev = i>0 ? dinners[i-1] : null;
+    var sambarYesterday = (prev === "sambar");
+    var cands = dinnerAll.filter(function(r){
+      if(usedD[r.name]) return false;
+      if(r.needsPrev && r.needsPrev !== prev) return false;
+      if(r.weekendOnly && !isWeekend(i)) return false;
+      return true;
+    });
+    if(sambarYesterday) idli.forEach(function(b){ if(!usedD[b.name]) cands.push(b); });
+    var ok = cands.filter(function(r){ return makeable(r, av); });
+    if(ok.length){ var c = pick(ok); dinners.push(c.name); usedD[c.name]=1; }
+    else dinners.push(insufficientLabel(cands, av));
+  }
+
+  var lunches = [], usedL = {};
+  for(var i=0;i<7;i++){
+    var prevD = i>0 ? dinners[i-1] : null;
+    var prevR = prevD ? byName[prevD] : null;
+    if(prevR && prevR.slots && prevR.slots.L){ lunches.push(prevD); continue; }
+    var sambarYesterday = (prevD === "sambar");
+    var cands = lunchAll.filter(function(r){
+      if(usedL[r.name]) return false;
+      if(usedD[r.name]) return false;
+      if(r.needsPrev && r.needsPrev !== prevD) return false;
+      if(r.weekendOnly && !isWeekend(i)) return false;
+      return true;
+    });
+    var ok = cands.filter(function(r){ return makeable(r, av); });
+    if(ok.length){ var c = pick(ok); lunches.push(c.name); usedL[c.name]=1; }
+    else lunches.push(insufficientLabel(cands, av));
+  }
+
+  var breakfasts = [], usedB = {};
+  for(var i=0;i<7;i++){
+    var prevD = i>0 ? dinners[i-1] : null;
+    var prevR = prevD ? byName[prevD] : null;
+    if(prevR && prevR.slots && prevR.slots.B){ breakfasts.push(prevD); continue; }
+    var cands = m.breakfast.filter(function(b){ return !usedB[b.name]; });
+    var ok = cands.filter(function(b){ return makeable(b, av); });
+    if(ok.length){ var c = pick(ok); breakfasts.push(c.name); usedB[c.name]=1; }
+    else breakfasts.push(insufficientLabel(cands, av));
+  }
+
+  for(var i=0;i<7;i++){
+    var day = DAYS[i];
+    var cands = m.snacks.filter(function(s){ return (!s.weekendOnly || isWeekend(i)) && makeable(s, av); });
+    var slot1 = cands.length ? pick(cands).name : INSUF;
+    var rest  = cands.filter(function(s){ return s.name !== slot1; });
+    var slot2 = rest.length ? pick(rest).name : (cands.length ? slot1 : INSUF);
+    data["Snack Break 1_"+day] = [slot1];
+    data["Snack Break 2_"+day] = [slot2];
+    data["Breakfast_"+day] = [breakfasts[i]];
+    data["Lunch_"+day]     = [lunches[i]];
+    data["Dinner_"+day]    = [dinners[i]];
+  }
+  return data;
+}
+
+window.MP = {
+  MASTER_KEY:MASTER_KEY, FRIDGE_KEY:FRIDGE_KEY, PANTRY_KEY:PANTRY_KEY, MIGRATE_KEY:MIGRATE_KEY,
+  DAYS:DAYS, MEALS:MEALS, GROUPS:[G_GOURD,G_GREEN,G_ROOT,G_OTHER],
+  seedMaster:seedMaster, loadMaster:loadMaster, saveMaster:saveMaster,
+  loadFridge:loadFridge, saveFridge:saveFridge,
+  loadPantryStock:loadPantryStock, savePantryStock:savePantryStock,
+  availability:availability, makeable:makeable, generatePlan:generatePlan,
+  SEED:{veggies:SEED_VEGGIES,pantry:SEED_PANTRY,recipes:SEED_RECIPES,breakfast:SEED_BREAKFAST,snacks:SEED_SNACKS}
+};
+})();
+</script>
+<script>
+/* ===== MEAL PLANNER PANELS ===== */
+/* ── Fridge ── */
+(function(){
+function esc(s){ return String(s||"").replace(/[&<>"]/g,function(c){return{"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c];}); }
+function render(){
+  var m = MP.loadMaster();
+  var ticked = {}; MP.loadFridge().forEach(function(n){ ticked[n]=1; });
+  var host = document.getElementById("fridge__groups");
+  if(!host) return;
+  var html = "";
+  MP.GROUPS.forEach(function(g){
+    var items = m.veggies.filter(function(v){ return !v.alwaysOn && v.group===g; });
+    if(!items.length) return;
+    html += '<div class="mp-card"><h3>'+esc(g)+'</h3>';
+    items.forEach(function(v){
+      html += '<label class="mp-chk"><input type="checkbox" data-veg="'+esc(v.name)+'"'+(ticked[v.name]?" checked":"")+'>'+esc(v.name)+
+              (v.telugu?' <span class="tel">'+esc(v.telugu)+'</span>':'')+'</label>';
+    });
+    html += '</div>';
+  });
+  host.innerHTML = html;
+  host.querySelectorAll('input[data-veg]').forEach(function(cb){
+    cb.addEventListener("change", function(){
+      var cur = MP.loadFridge(), n = cb.dataset.veg;
+      var i = cur.indexOf(n);
+      if(cb.checked && i<0) cur.push(n);
+      if(!cb.checked && i>=0) cur.splice(i,1);
+      MP.saveFridge(cur);
+      UndoManager.push('fridge');
+    });
+  });
+  var always = m.veggies.filter(function(v){ return v.alwaysOn; }).map(function(v){ return v.name; });
+  var note = document.getElementById("fridge__always");
+  if(note) note.textContent = always.length ? (always.join(", ") + " are always on hand and never shown here.") : "";
+}
+function setAll(on){
+  var m = MP.loadMaster();
+  MP.saveFridge(on ? m.veggies.filter(function(v){return !v.alwaysOn;}).map(function(v){return v.name;}) : []);
+  render(); UndoManager.push('fridge');
+}
+window.fridge_selectAll = function(){ setAll(true); };
+window.fridge_clearAll  = function(){ setAll(false); };
+window.fridge_render = render;
+function reg(){ UndoManager.register('fridge',
+  function(){ return {f:_cget(MP.FRIDGE_KEY)}; },
+  function(s){ _cset(MP.FRIDGE_KEY, s.f); render(); }); }
+reg();
+OT.onReady(async () => {
+  if(!Object.keys(_otCache).length) _otCache = await OT.getAll();
+  render();
+  reg();   /* rebaseline undo now that real state is loaded */
+});
+})();
+
+/* ── Pantry ── */
+(function(){
+function esc(s){ return String(s||"").replace(/[&<>"]/g,function(c){return{"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c];}); }
+function render(){
+  var m = MP.loadMaster();
+  var ticked = {}; MP.loadPantryStock().forEach(function(n){ ticked[n]=1; });
+  var host = document.getElementById("pantry__stock");
+  if(!host) return;
+  var html = '<div class="mp-card"><h3>Staples in stock</h3>';
+  m.pantry.forEach(function(p,i){
+    html += '<label class="mp-chk"><input type="checkbox" data-pan="'+esc(p.name)+'"'+(ticked[p.name]?" checked":"")+'>'+esc(p.name)+
+            '<span style="flex:1"></span><button class="rowdel" data-del="'+i+'" title="Remove staple">&times;</button></label>';
+  });
+  html += '</div>';
+  host.innerHTML = html;
+  host.querySelectorAll('input[data-pan]').forEach(function(cb){
+    cb.addEventListener("change", function(){
+      var cur = MP.loadPantryStock(), n = cb.dataset.pan;
+      var i = cur.indexOf(n);
+      if(cb.checked && i<0) cur.push(n);
+      if(!cb.checked && i>=0) cur.splice(i,1);
+      MP.savePantryStock(cur);
+      UndoManager.push('pantry');
+    });
+  });
+  host.querySelectorAll('button[data-del]').forEach(function(b){
+    b.addEventListener("click", function(){
+      var mm = MP.loadMaster(); var idx = parseInt(b.dataset.del,10);
+      var nm = mm.pantry[idx] && mm.pantry[idx].name;
+      if(!nm) return;
+      if(!confirm('Remove "'+nm+'" from Pantry? Dishes that need it will stop checking for it.')) return;
+      mm.pantry.splice(idx,1); MP.saveMaster(mm);
+      MP.savePantryStock(MP.loadPantryStock().filter(function(x){ return x!==nm; }));
+      render(); UndoManager.push('pantry');
+    });
+  });
+}
+window.pantry_selectAll = function(){ MP.savePantryStock(MP.loadMaster().pantry.map(function(p){return p.name;})); render(); UndoManager.push('pantry'); };
+window.pantry_clearAll  = function(){ MP.savePantryStock([]); render(); UndoManager.push('pantry'); };
+window.pantry_addItem = function(){
+  var n = prompt("New staple name:");
+  if(!n || !n.trim()) return;
+  n = n.trim();
+  var m = MP.loadMaster();
+  if(m.pantry.some(function(p){ return p.name.toLowerCase()===n.toLowerCase(); })){ alert("That staple already exists."); return; }
+  m.pantry.push({name:n}); MP.saveMaster(m);
+  var st = MP.loadPantryStock(); st.push(n); MP.savePantryStock(st);
+  render(); UndoManager.push('pantry');
+};
+window.pantry_restore = function(){
+  if(!confirm("Restore the default pantry list? Your custom staples will be lost.")) return;
+  var m = MP.loadMaster();
+  m.pantry = JSON.parse(JSON.stringify(MP.SEED.pantry));
+  MP.saveMaster(m);
+  MP.savePantryStock(m.pantry.map(function(p){return p.name;}));
+  render(); UndoManager.push('pantry');
+};
+window.pantry_render = render;
+function reg(){ UndoManager.register('pantry',
+  function(){ return {m:_cget(MP.MASTER_KEY), p:_cget(MP.PANTRY_KEY)}; },
+  function(s){ _cset(MP.MASTER_KEY,s.m); _cset(MP.PANTRY_KEY,s.p); render(); }); }
+reg();
+OT.onReady(async () => {
+  if(!Object.keys(_otCache).length) _otCache = await OT.getAll();
+  render();
+  reg();
+});
+})();
+
+/* ── Veggies ── */
+(function(){
+function esc(s){ return String(s||"").replace(/[&<>"]/g,function(c){return{"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c];}); }
+function render(){
+  var m = MP.loadMaster();
+  var body = document.getElementById("veg__body");
+  if(!body) return;
+  body.innerHTML = m.veggies.map(function(v,i){
+    var opts = MP.GROUPS.map(function(g){ return '<option'+(v.group===g?' selected':'')+'>'+esc(g)+'</option>'; }).join("");
+    return '<tr>'+
+      '<td><input type="text" data-i="'+i+'" data-f="name" value="'+esc(v.name)+'"></td>'+
+      '<td><input type="text" data-i="'+i+'" data-f="telugu" value="'+esc(v.telugu)+'"></td>'+
+      '<td><select data-i="'+i+'" data-f="group">'+opts+'</select></td>'+
+      '<td><label class="mp-chk" style="padding:0"><input type="checkbox" data-i="'+i+'" data-f="alwaysOn"'+(v.alwaysOn?" checked":"")+'> always on hand</label></td>'+
+      '<td><button class="rowdel" data-del="'+i+'">&times;</button></td></tr>';
+  }).join("");
+  var c = document.getElementById("veg__count");
+  if(c) c.textContent = m.veggies.filter(function(v){return !v.alwaysOn;}).length + " plannable, " +
+                        m.veggies.filter(function(v){return v.alwaysOn;}).length + " always on hand";
+  body.querySelectorAll("[data-f]").forEach(function(el){
+    el.addEventListener("change", function(){
+      var mm = MP.loadMaster(), i = parseInt(el.dataset.i,10), f = el.dataset.f;
+      var old = mm.veggies[i].name;
+      if(f==="alwaysOn") mm.veggies[i].alwaysOn = el.checked;
+      else mm.veggies[i][f] = el.value.trim();
+      MP.saveMaster(mm);
+      if(f==="name" && old !== el.value.trim()){
+        var nn = el.value.trim();
+        MP.saveFridge(MP.loadFridge().map(function(x){ return x===old ? nn : x; }));
+        ["recipes","breakfast","snacks"].forEach(function(k){
+          mm[k].forEach(function(it){ if(it.veggies) it.veggies = it.veggies.map(function(x){ return x===old?nn:x; }); });
+        });
+        MP.saveMaster(mm);
+      }
+      if(f==="alwaysOn" && el.checked) MP.saveFridge(MP.loadFridge().filter(function(x){ return x!==mm.veggies[i].name; }));
+      render(); UndoManager.push('veg');
+      if(window.fridge_render) window.fridge_render();
+    });
+  });
+  body.querySelectorAll("button[data-del]").forEach(function(b){
+    b.addEventListener("click", function(){
+      var mm = MP.loadMaster(), i = parseInt(b.dataset.del,10);
+      var nm = mm.veggies[i].name;
+      var users = [];
+      ["recipes","breakfast","snacks"].forEach(function(k){
+        mm[k].forEach(function(it){ if((it.veggies||[]).indexOf(nm)>=0) users.push(it.name); });
+      });
+      var msg = 'Delete "'+nm+'"?';
+      if(users.length) msg += "\n\nThese dishes need it and will become unmakeable:\n" + users.join(", ");
+      if(!confirm(msg)) return;
+      mm.veggies.splice(i,1); MP.saveMaster(mm);
+      MP.saveFridge(MP.loadFridge().filter(function(x){ return x!==nm; }));
+      render(); UndoManager.push('veg');
+      if(window.fridge_render) window.fridge_render();
+    });
+  });
+}
+window.veg_add = function(){
+  var m = MP.loadMaster();
+  m.veggies.push({name:"new veggie", telugu:"", alwaysOn:false, group:MP.GROUPS[3]});
+  MP.saveMaster(m); render(); UndoManager.push('veg');
+};
+window.veg_restore = function(){
+  if(!confirm("Restore the default veggie list? Custom veggies will be lost.")) return;
+  var m = MP.loadMaster();
+  m.veggies = JSON.parse(JSON.stringify(MP.SEED.veggies));
+  MP.saveMaster(m);
+  MP.saveFridge(m.veggies.filter(function(v){return !v.alwaysOn;}).map(function(v){return v.name;}));
+  render(); UndoManager.push('veg');
+  if(window.fridge_render) window.fridge_render();
+};
+function reg(){ UndoManager.register('veg',
+  function(){ return {m:_cget(MP.MASTER_KEY), f:_cget(MP.FRIDGE_KEY)}; },
+  function(s){ _cset(MP.MASTER_KEY,s.m); _cset(MP.FRIDGE_KEY,s.f); render(); if(window.fridge_render) window.fridge_render(); }); }
+reg();
+OT.onReady(async () => {
+  if(!Object.keys(_otCache).length) _otCache = await OT.getAll();
+  render();
+  reg();
+});
+})();
+
+/* ── Shared list-editor for recipes / breakfast / snacks ── */
+(function(){
+function esc(s){ return String(s||"").replace(/[&<>"]/g,function(c){return{"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c];}); }
+const CATS = ["wet curry","dry curry","dal","liquid","chutney","snack","other"];
+
+function known(m){
+  var v={},p={};
+  m.veggies.forEach(function(x){ v[x.name]=1; });
+  m.pantry.forEach(function(x){ p[x.name]=1; });
+  return {v:v,p:p};
+}
+function listStr(a){ return (a||[]).join(", "); }
+function parseList(s){
+  return String(s||"").split(",").map(function(x){ return x.trim(); }).filter(function(x){ return x.length; });
+}
+function badness(vals, dict){ return vals.some(function(x){ return !dict[x]; }); }
+
+function ingCells(it, i, k, kn){
+  var vBad = badness(it.veggies||[], kn.v) ? " bad" : "";
+  var pBad = badness(it.pantry||[],  kn.p) ? " bad" : "";
+  return '<td><input type="text" class="'+vBad.trim()+'" data-k="'+k+'" data-i="'+i+'" data-f="veggies" value="'+esc(listStr(it.veggies))+'" placeholder="none"></td>'+
+         '<td><input type="text" class="'+pBad.trim()+'" data-k="'+k+'" data-i="'+i+'" data-f="pantry"  value="'+esc(listStr(it.pantry))+'" placeholder="none"></td>';
+}
+
+function renderRec(){
+  var m = MP.loadMaster(), kn = known(m);
+  var body = document.getElementById("rec__body");
+  if(!body) return;
+  body.innerHTML = m.recipes.map(function(r,i){
+    var opts = CATS.map(function(c){ return '<option'+(r.category===c?' selected':'')+'>'+esc(c)+'</option>'; }).join("");
+    var sl = r.slots||{};
+    var slots = ["B","L","D","K"].map(function(s){
+      return '<label><input type="checkbox" data-k="recipes" data-i="'+i+'" data-f="slot'+s+'"'+(sl[s]?" checked":"")+'>'+s+'</label>';
+    }).join("");
+    var prev = r.needsPrev ? '<div style="font-size:10px;color:var(--text3);margin-top:2px;">needs yesterday: '+esc(r.needsPrev)+'</div>' : '';
+    return '<tr>'+
+      '<td><input type="text" data-k="recipes" data-i="'+i+'" data-f="name" value="'+esc(r.name)+'">'+prev+'</td>'+
+      '<td><select data-k="recipes" data-i="'+i+'" data-f="category">'+opts+'</select></td>'+
+      ingCells(r,i,"recipes",kn)+
+      '<td><div class="slotbox">'+slots+'</div></td>'+
+      '<td><button class="rowdel" data-k="recipes" data-del="'+i+'">&times;</button></td></tr>';
+  }).join("");
+  var c = document.getElementById("rec__count");
+  if(c) c.textContent = m.recipes.length + " dishes";
+  wire();
+}
+function renderBrek(){
+  var m = MP.loadMaster(), kn = known(m);
+  var body = document.getElementById("brek__body");
+  if(!body) return;
+  body.innerHTML = m.breakfast.map(function(b,i){
+    return '<tr>'+
+      '<td><input type="text" data-k="breakfast" data-i="'+i+'" data-f="name" value="'+esc(b.name)+'"></td>'+
+      ingCells(b,i,"breakfast",kn)+
+      '<td><label class="mp-chk" style="padding:0"><input type="checkbox" data-k="breakfast" data-i="'+i+'" data-f="dinnerAfterSambar"'+(b.dinnerAfterSambar?" checked":"")+'> yes</label></td>'+
+      '<td><button class="rowdel" data-k="breakfast" data-del="'+i+'">&times;</button></td></tr>';
+  }).join("");
+  var c = document.getElementById("brek__count");
+  if(c) c.textContent = m.breakfast.length + " breakfasts";
+  wire();
+}
+function renderSnk(){
+  var m = MP.loadMaster(), kn = known(m);
+  var body = document.getElementById("snk__body");
+  if(!body) return;
+  body.innerHTML = m.snacks.map(function(s,i){
+    return '<tr>'+
+      '<td><input type="text" data-k="snacks" data-i="'+i+'" data-f="name" value="'+esc(s.name)+'"></td>'+
+      ingCells(s,i,"snacks",kn)+
+      '<td><label class="mp-chk" style="padding:0"><input type="checkbox" data-k="snacks" data-i="'+i+'" data-f="weekendOnly"'+(s.weekendOnly?" checked":"")+'> yes</label></td>'+
+      '<td><button class="rowdel" data-k="snacks" data-del="'+i+'">&times;</button></td></tr>';
+  }).join("");
+  var c = document.getElementById("snk__count");
+  if(c) c.textContent = m.snacks.length + " snacks";
+  var weekday = m.snacks.filter(function(s){ return !s.weekendOnly; }).length;
+  var note = document.getElementById("snk__math");
+  if(note) note.textContent = "Weekdays need 10 snack slots from " + weekday + " non-weekend snack" + (weekday===1?"":"s") +
+    (weekday>0 && weekday<10 ? " — so each will repeat about " + (Math.round((10/weekday)*10)/10) + " times a week. Add more snacks for variety." : ".");
+  wire();
+}
+function renderAll(){ renderRec(); renderBrek(); renderSnk(); }
+
+function wire(){
+  document.querySelectorAll("#panel-rec [data-f], #panel-brek [data-f], #panel-snk [data-f]").forEach(function(el){
+    if(el._wired) return; el._wired = 1;
+    el.addEventListener("change", function(){
+      var m = MP.loadMaster();
+      var k = el.dataset.k, i = parseInt(el.dataset.i,10), f = el.dataset.f;
+      var it = m[k][i]; if(!it) return;
+      if(f.indexOf("slot")===0){ it.slots = it.slots||{}; it.slots[f.slice(4)] = el.checked; }
+      else if(f==="weekendOnly" || f==="dinnerAfterSambar"){ it[f] = el.checked; }
+      else if(f==="veggies" || f==="pantry"){ it[f] = parseList(el.value); }
+      else { it[f] = el.value.trim(); }
+      MP.saveMaster(m);
+      renderAll();
+      UndoManager.push(k==="recipes"?"rec":(k==="breakfast"?"brek":"snk"));
+    });
+  });
+  document.querySelectorAll("#panel-rec button[data-del], #panel-brek button[data-del], #panel-snk button[data-del]").forEach(function(b){
+    if(b._wired) return; b._wired = 1;
+    b.addEventListener("click", function(){
+      var m = MP.loadMaster(), k = b.dataset.k, i = parseInt(b.dataset.del,10);
+      if(!m[k][i]) return;
+      if(!confirm('Delete "'+m[k][i].name+'"?')) return;
+      m[k].splice(i,1); MP.saveMaster(m); renderAll();
+      UndoManager.push(k==="recipes"?"rec":(k==="breakfast"?"brek":"snk"));
+    });
+  });
+}
+
+function addTo(k, obj, tab){
+  var m = MP.loadMaster(); m[k].push(obj); MP.saveMaster(m); renderAll(); UndoManager.push(tab);
+}
+window.rec_add  = function(){ addTo("recipes", {id:"r"+Date.now(), name:"new dish", category:"other", veggies:[], pantry:[], slots:{B:false,L:true,D:true,K:false}}, "rec"); };
+window.brek_add = function(){ addTo("breakfast", {name:"new breakfast", veggies:[], pantry:[]}, "brek"); };
+window.snk_add  = function(){ addTo("snacks", {name:"new snack", veggies:[], pantry:[], weekendOnly:false}, "snk"); };
+
+function restore(k, tab, label){
+  if(!confirm("Restore the default "+label+" list? Your edits will be lost.")) return;
+  var m = MP.loadMaster();
+  m[k] = JSON.parse(JSON.stringify(MP.SEED[k]));
+  MP.saveMaster(m); renderAll(); UndoManager.push(tab);
+}
+window.rec_restore  = function(){ restore("recipes","rec","recipe"); };
+window.brek_restore = function(){ restore("breakfast","brek","breakfast"); };
+window.snk_restore  = function(){ restore("snacks","snk","snack"); };
+
+function reg(){
+  ["rec","brek","snk"].forEach(function(tab){
+    UndoManager.register(tab,
+      function(){ return {m:_cget(MP.MASTER_KEY)}; },
+      function(s){ _cset(MP.MASTER_KEY, s.m); renderAll(); });
+  });
+}
+reg();
+OT.onReady(async () => {
+  if(!Object.keys(_otCache).length) _otCache = await OT.getAll();
+  renderAll();
+  reg();
+});
 })();
 </script>
 </body>
