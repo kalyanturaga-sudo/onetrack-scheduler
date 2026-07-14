@@ -739,9 +739,9 @@ body.nav-is-collapsed.has-vrail .panels { left: var(--vrail-width) !important; }
         </div>
       </div>
       <table class="mp-tbl"><thead><tr>
-        <th style="width:31%">Dish</th><th style="width:31%">Needs veggies</th><th style="width:31%">Needs staples</th><th style="width:7%"></th>
+        <th style="width:28%">Dish</th><th style="width:28%">Needs staples</th><th style="width:37%">Days</th><th style="width:7%"></th>
       </tr></thead><tbody id="brek__body"></tbody></table>
-      <div class="mp-note">Sandwiches aren't here — they're dinner dishes in Recipes whose leftovers carry into breakfast.</div>
+      <div class="mp-note">Days marks which days of the week this breakfast is allowed to be picked. Sandwich leftovers from dinner recipes can still carry into breakfast as before.</div>
     </div>
   </div><!-- /panel-brek -->
 
@@ -2026,7 +2026,10 @@ const SEED_BREAKFAST = [
   {name:"atukula upma",    veggies:[],          pantry:["poha/atukulu"]},
   {name:"pongal",          veggies:[],          pantry:[]},
   {name:"vangi baath",     veggies:["brinjal"], pantry:[]},
-  {name:"cornflakes",      veggies:[],          pantry:[]}
+  {name:"cornflakes",      veggies:[],          pantry:[]},
+  {name:"avocado sandwich",veggies:[],          pantry:["bread"]},
+  {name:"potato sandwich", veggies:[],          pantry:["bread"]},
+  {name:"veg puffs",       veggies:[],          pantry:[]}
 ];
 
 const SEED_SNACKS = [
@@ -2063,6 +2066,16 @@ function loadMaster(){
     if(!m.breakfast) m.breakfast = JSON.parse(JSON.stringify(SEED_BREAKFAST));
     if(!m.snacks)    m.snacks    = JSON.parse(JSON.stringify(SEED_SNACKS));
     m.recipes.forEach(function(r){ if(!r.days) r.days=[true,true,true,true,true,true,true]; });
+    m.breakfast.forEach(function(b){ if(!b.days) b.days=[true,true,true,true,true,true,true]; });
+    (function(){
+      var haveB = {};
+      m.breakfast.forEach(function(b){ haveB[String(b.name||"").toLowerCase()] = 1; });
+      [{name:"avocado sandwich",veggies:[],pantry:["bread"]},
+       {name:"potato sandwich", veggies:[],pantry:["bread"]},
+       {name:"veg puffs",       veggies:[],pantry:[]}].forEach(function(nb){
+        if(!haveB[nb.name]) m.breakfast.push(JSON.parse(JSON.stringify(nb)));
+      });
+    })();
     if(!m.veggieGroups) m.veggieGroups = [G_GOURD,G_GREEN,G_ROOT,G_OTHER];
     if(!m.recCategories){
       m.recCategories = DEFAULT_REC_CATS.slice();
@@ -2239,10 +2252,10 @@ function generatePlan(opts){
       picks["Breakfast_"+DAYS[i]] = prevD;
       continue;
     }
-    var cands = m.breakfast.filter(function(b){ return !usedB[b.name]; });
-    var ok = cands.filter(function(b){ return makeable(b, av); });
+    var cands = m.breakfast.filter(function(b){ return !usedB[b.name] && !(b.days && b.days[i]===false); });
+    var ok = cands.filter(function(b){ return makeable({pantry:b.pantry}, av); });
     if(ok.length){ var c = pick(ok); breakfasts[i] = c.name; usedB[c.name] = 1; }
-    else breakfasts[i] = insufficientLabel(cands, av);
+    else breakfasts[i] = insufficientLabel(cands.map(function(b){ return {pantry:b.pantry}; }), av);
     picks["Breakfast_"+DAYS[i]] = breakfasts[i];
   }
 
@@ -2676,6 +2689,18 @@ function ingCells(it, i, k, kn){
 
 const DAY_LABELS = ["M","T","W","T","F","S","S"];
 
+function stapleCell(it, i, k, kn){
+  var pBad = badness(it.pantry||[], kn.p) ? " bad" : "";
+  return '<td><input type="text" class="'+pBad.trim()+'" data-k="'+k+'" data-i="'+i+'" data-f="pantry" value="'+esc(listStr(it.pantry))+'" placeholder="none"></td>';
+}
+function dayCells(it, i, k){
+  var d = it.days||[true,true,true,true,true,true,true];
+  var boxes = DAY_LABELS.map(function(lbl,di){
+    return '<label><input type="checkbox" data-k="'+k+'" data-i="'+i+'" data-f="day'+di+'"'+(d[di]?" checked":"")+'><span>'+lbl+'</span></label>';
+  }).join("");
+  return '<td><div class="dayrow">'+boxes+'</div></td>';
+}
+
 function vegOptions(names, sel){
   return '<option value=""'+(sel?"":" selected")+'>—</option>'+names.map(function(n){
     return '<option value="'+esc(n)+'"'+(n===sel?" selected":"")+'>'+esc(n)+'</option>';
@@ -2786,7 +2811,8 @@ function renderBrek(){
   body.innerHTML = m.breakfast.map(function(b,i){
     return '<tr>'+
       '<td><input type="text" data-k="breakfast" data-i="'+i+'" data-f="name" value="'+esc(b.name)+'"></td>'+
-      ingCells(b,i,"breakfast",kn)+
+      stapleCell(b,i,"breakfast",kn)+
+      dayCells(b,i,"breakfast")+
       '<td><button class="rowdel" data-k="breakfast" data-del="'+i+'">&times;</button></td></tr>';
   }).join("");
   var c = document.getElementById("brek__count");
@@ -2856,7 +2882,7 @@ window.rec_add  = function(){
   m.recipes.unshift({id:"r"+Date.now(), name:"new dish", category:m.recCategories[0]||"Others", veggies:[], pantry:[], slots:{B:false,L:true,D:true,K:false}, days:[true,true,true,true,true,true,true]});
   MP.saveMaster(m); renderAll(); UndoManager.push("rec");
 };
-window.brek_add = function(){ addTo("breakfast", {name:"new breakfast", veggies:[], pantry:[]}, "brek"); };
+window.brek_add = function(){ addTo("breakfast", {name:"new breakfast", veggies:[], pantry:[], days:[true,true,true,true,true,true,true]}, "brek"); };
 window.snk_add  = function(){ addTo("snacks", {name:"new snack", veggies:[], pantry:[], weekendOnly:false}, "snk"); };
 
 function restore(k, tab, label){
