@@ -1262,7 +1262,8 @@ function meal_render() {
         let sel = -1;
 
         const store = () => {
-          const v = tx.value.trim();
+          const cap = s => (window.MP && MP.capName) ? MP.capName(s) : (s ? s.charAt(0).toUpperCase()+s.slice(1) : s);
+          const v = cap(tx.value.trim());
           if (v) {
             if (data[key][idx]) data[key][idx].text = v;
             else data[key][idx] = { text: v };
@@ -1309,6 +1310,8 @@ function meal_render() {
         tx.addEventListener("blur", () => {
           store();
           hide();
+          const bv = tx.value.trim();
+          if (bv && window.MP && MP.capName) tx.value = MP.capName(bv);
           if (!tx.value.trim() && data[key][idx]) {
             data[key].splice(idx, 1);
             saveData(data);
@@ -1908,6 +1911,7 @@ const MASTER_KEY = "MEALPLAN_MASTER_V1";
 const FRIDGE_KEY = "MEALPLAN_FRIDGE_V1";
 const PANTRY_KEY = "MEALPLAN_PANTRY_V1";
 const MIGRATE_KEY = "MEALPLAN_TABS_MIGRATED_V1";
+const CAPSORT_KEY = "MEALPLAN_CAPSORT_V1";
 
 const DAYS  = ["Monday","Tuesday","Wednesday","Thursday","Friday","Saturday","Sunday"];
 const MEALS = ["Breakfast","Snack Break 1","Lunch","Snack Break 2","Dinner"];
@@ -2043,16 +2047,44 @@ const SEED_SNACKS = [
   {name:"veg puffs",       veggies:[],             pantry:[],             weekendOnly:false}
 ];
 
+/* ── Capitalization (ongoing) + alphabetical sort (applied to seeds and one-time to saved data) ── */
+function capName(s){ s = String(s||""); return s ? s.charAt(0).toUpperCase() + s.slice(1) : s; }
+function capListNames(a){ return (a||[]).map(capName); }
+function capMaster(m){
+  (m.veggies||[]).forEach(function(v){ v.name = capName(v.name); });
+  (m.pantry ||[]).forEach(function(p){ p.name = capName(p.name); });
+  [m.recipes, m.breakfast, m.snacks].forEach(function(list){
+    (list||[]).forEach(function(it){
+      it.name    = capName(it.name);
+      it.veggies = capListNames(it.veggies);
+      it.pantry  = capListNames(it.pantry);
+    });
+  });
+}
+function nameCmp(a,b){ return String(a).toLowerCase().localeCompare(String(b).toLowerCase()); }
+function sortMasterLists(m){
+  var gOrder = {}; (m.veggieGroups||[]).forEach(function(g,i){ gOrder[g] = i; });
+  (m.veggies||[]).sort(function(a,b){ var d = (gOrder[a.group]||0) - (gOrder[b.group]||0); return d || nameCmp(a.name,b.name); });
+  (m.pantry ||[]).sort(function(a,b){ return nameCmp(a.name,b.name); });
+  var cOrder = {}; (m.recCategories||[]).forEach(function(c,i){ cOrder[c] = i; });
+  (m.recipes||[]).sort(function(a,b){ var d = (cOrder[a.category]||0) - (cOrder[b.category]||0); return d || nameCmp(a.name,b.name); });
+  (m.breakfast||[]).sort(function(a,b){ return nameCmp(a.name,b.name); });
+  (m.snacks   ||[]).sort(function(a,b){ return nameCmp(a.name,b.name); });
+}
+
 function seedMaster(){
   var recipes = JSON.parse(JSON.stringify(SEED_RECIPES));
   recipes.forEach(function(r){ r.category = RECAT_MIGRATE[r.category] || r.category; });
-  return { veggies:JSON.parse(JSON.stringify(SEED_VEGGIES)),
+  var m = { veggies:JSON.parse(JSON.stringify(SEED_VEGGIES)),
            veggieGroups:[G_GOURD,G_GREEN,G_ROOT,G_OTHER],
            pantry:JSON.parse(JSON.stringify(SEED_PANTRY)),
            recipes:recipes,
            recCategories:DEFAULT_REC_CATS.slice(),
            breakfast:JSON.parse(JSON.stringify(SEED_BREAKFAST)),
            snacks:JSON.parse(JSON.stringify(SEED_SNACKS)) };
+  capMaster(m);
+  sortMasterLists(m);
+  return m;
 }
 
 function loadMaster(){
@@ -2070,10 +2102,10 @@ function loadMaster(){
     (function(){
       var haveB = {};
       m.breakfast.forEach(function(b){ haveB[String(b.name||"").toLowerCase()] = 1; });
-      [{name:"avocado sandwich",veggies:[],pantry:["bread"]},
-       {name:"potato sandwich", veggies:[],pantry:["bread"]},
-       {name:"veg puffs",       veggies:[],pantry:[]}].forEach(function(nb){
-        if(!haveB[nb.name]) m.breakfast.push(JSON.parse(JSON.stringify(nb)));
+      [{name:"Avocado sandwich",veggies:[],pantry:["Bread"]},
+       {name:"Potato sandwich", veggies:[],pantry:["Bread"]},
+       {name:"Veg puffs",       veggies:[],pantry:[]}].forEach(function(nb){
+        if(!haveB[nb.name.toLowerCase()]) m.breakfast.push(JSON.parse(JSON.stringify(nb)));
       });
     })();
     if(!m.veggieGroups) m.veggieGroups = [G_GOURD,G_GREEN,G_ROOT,G_OTHER];
@@ -2082,6 +2114,26 @@ function loadMaster(){
       m.recipes.forEach(function(r){
         r.category = RECAT_MIGRATE[r.category] || (m.recCategories.indexOf(r.category)>=0 ? r.category : "Others");
       });
+    }
+    /* ── One-time capitalize + A→Z sort of saved data (never re-sorts after this; drag order is yours) ── */
+    if(_cget(CAPSORT_KEY) !== "1"){
+      capMaster(m);
+      sortMasterLists(m);
+      [FRIDGE_KEY, PANTRY_KEY].forEach(function(k){
+        try { var a = JSON.parse(_cget(k)); if(Array.isArray(a)) _cset(k, JSON.stringify(a.map(capName))); } catch(e){}
+      });
+      try {
+        var allPlans = JSON.parse(_cget("MEALPLAN_PLAN_V1") || "{}");
+        Object.keys(allPlans).forEach(function(wk){
+          var d = allPlans[wk] || {};
+          Object.keys(d).forEach(function(key){
+            (d[key]||[]).forEach(function(t){ if(t && t.text) t.text = capName(t.text); });
+          });
+        });
+        _cset("MEALPLAN_PLAN_V1", JSON.stringify(allPlans));
+      } catch(e){}
+      _cset(CAPSORT_KEY, "1");
+      _cset(MASTER_KEY, JSON.stringify(m));
     }
     return m;
   } catch(e){ return seedMaster(); }
@@ -2291,6 +2343,7 @@ function generatePlan(opts){
 
 window.MP = {
   MASTER_KEY:MASTER_KEY, FRIDGE_KEY:FRIDGE_KEY, PANTRY_KEY:PANTRY_KEY, MIGRATE_KEY:MIGRATE_KEY,
+  capName:capName,
   DAYS:DAYS, MEALS:MEALS, GROUPS:[G_GOURD,G_GREEN,G_ROOT,G_OTHER],
   seedMaster:seedMaster, loadMaster:loadMaster, saveMaster:saveMaster,
   loadFridge:loadFridge, saveFridge:saveFridge,
@@ -2491,7 +2544,7 @@ window.pantry_clearAll  = function(){ MP.savePantryStock([]); render(); UndoMana
 window.pantry_addItem = function(){
   var n = prompt("New staple name:");
   if(!n || !n.trim()) return;
-  n = n.trim();
+  n = MP.capName(n.trim());
   var m = MP.loadMaster();
   if(m.pantry.some(function(p){ return p.name.toLowerCase()===n.toLowerCase(); })){ alert("That staple already exists."); return; }
   m.pantry.push({name:n}); MP.saveMaster(m);
@@ -2593,10 +2646,11 @@ function render(){
       var mm = MP.loadMaster(), i = parseInt(el.dataset.i,10), f = el.dataset.f;
       var old = mm.veggies[i].name;
       if(f==="alwaysOn") mm.veggies[i].alwaysOn = el.checked;
+      else if(f==="name") mm.veggies[i].name = MP.capName(el.value.trim());
       else mm.veggies[i][f] = el.value.trim();
       MP.saveMaster(mm);
-      if(f==="name" && old !== el.value.trim()){
-        var nn = el.value.trim();
+      if(f==="name" && old !== mm.veggies[i].name){
+        var nn = mm.veggies[i].name;
         MP.saveFridge(MP.loadFridge().map(function(x){ return x===old ? nn : x; }));
         ["recipes","breakfast","snacks"].forEach(function(k){
           mm[k].forEach(function(it){ if(it.veggies) it.veggies = it.veggies.map(function(x){ return x===old?nn:x; }); });
@@ -2639,7 +2693,7 @@ function render(){
 }
 window.veg_add = function(){
   var m = MP.loadMaster();
-  m.veggies.unshift({name:"new veggie", telugu:"", alwaysOn:false, group:m.veggieGroups[0]});
+  m.veggies.unshift({name:"New veggie", telugu:"", alwaysOn:false, group:m.veggieGroups[0]});
   MP.saveMaster(m); render(); UndoManager.push('veg');
 };
 window.veg_restore = function(){
@@ -2855,7 +2909,8 @@ function wire(){
         it.veggies = [v1,v2].filter(function(x){ return x.length; });
       }
       else if(f==="weekendOnly"){ it[f] = el.checked; }
-      else if(f==="veggies" || f==="pantry"){ it[f] = parseList(el.value); }
+      else if(f==="veggies" || f==="pantry"){ it[f] = parseList(el.value).map(MP.capName); }
+      else if(f==="name"){ it[f] = MP.capName(el.value.trim()); }
       else { it[f] = el.value.trim(); }
       MP.saveMaster(m);
       renderAll();
@@ -2879,11 +2934,11 @@ function addTo(k, obj, tab){
 }
 window.rec_add  = function(){
   var m = MP.loadMaster();
-  m.recipes.unshift({id:"r"+Date.now(), name:"new dish", category:m.recCategories[0]||"Others", veggies:[], pantry:[], slots:{B:false,L:true,D:true,K:false}, days:[true,true,true,true,true,true,true]});
+  m.recipes.unshift({id:"r"+Date.now(), name:"New dish", category:m.recCategories[0]||"Others", veggies:[], pantry:[], slots:{B:false,L:true,D:true,K:false}, days:[true,true,true,true,true,true,true]});
   MP.saveMaster(m); renderAll(); UndoManager.push("rec");
 };
-window.brek_add = function(){ addTo("breakfast", {name:"new breakfast", veggies:[], pantry:[], days:[true,true,true,true,true,true,true]}, "brek"); };
-window.snk_add  = function(){ addTo("snacks", {name:"new snack", veggies:[], pantry:[], weekendOnly:false}, "snk"); };
+window.brek_add = function(){ addTo("breakfast", {name:"New breakfast", veggies:[], pantry:[], days:[true,true,true,true,true,true,true]}, "brek"); };
+window.snk_add  = function(){ addTo("snacks", {name:"New snack", veggies:[], pantry:[], weekendOnly:false}, "snk"); };
 
 function restore(k, tab, label){
   if(!confirm("Restore the default "+label+" list? Your edits will be lost.")) return;
