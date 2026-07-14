@@ -756,7 +756,7 @@ body.nav-is-collapsed.has-vrail .panels { left: var(--vrail-width) !important; }
         </div>
       </div>
       <table class="mp-tbl"><thead><tr>
-        <th style="width:26%">Snack</th><th style="width:26%">Needs veggies</th><th style="width:26%">Needs staples</th><th style="width:16%">Weekend only</th><th style="width:6%"></th>
+        <th style="width:22%">Snack</th><th style="width:22%">Needs veggies</th><th style="width:22%">Needs staples</th><th style="width:9%">10 AM</th><th style="width:9%">3 PM</th><th style="width:11%">Weekend only</th><th style="width:5%"></th>
       </tr></thead><tbody id="snk__body"></tbody></table>
       <div class="mp-note" id="snk__math"></div>
     </div>
@@ -2103,14 +2103,14 @@ const SEED_BREAKFAST = [
 ];
 
 const SEED_SNACKS = [
-  {name:"mirchi bajji",    veggies:[],             pantry:["besan"],      weekendOnly:true},
-  {name:"aratikaya bajji", veggies:["raw banana"], pantry:["besan"],      weekendOnly:true},
-  {name:"brinjal bajji",   veggies:["brinjal"],    pantry:["besan"],      weekendOnly:true},
-  {name:"punugulu",        veggies:[],             pantry:["rice flour"], weekendOnly:false},
-  {name:"maggi",           veggies:[],             pantry:[],             weekendOnly:false},
-  {name:"knorr soup",      veggies:[],             pantry:[],             weekendOnly:false},
-  {name:"pani puri",       veggies:[],             pantry:[],             weekendOnly:false},
-  {name:"veg puffs",       veggies:[],             pantry:[],             weekendOnly:false}
+  {name:"mirchi bajji",    veggies:[],             pantry:["besan"],      weekendOnly:true,  at10:true, at3:true},
+  {name:"aratikaya bajji", veggies:["raw banana"], pantry:["besan"],      weekendOnly:true,  at10:true, at3:true},
+  {name:"brinjal bajji",   veggies:["brinjal"],    pantry:["besan"],      weekendOnly:true,  at10:true, at3:true},
+  {name:"punugulu",        veggies:[],             pantry:["rice flour"], weekendOnly:false, at10:true, at3:true},
+  {name:"maggi",           veggies:[],             pantry:[],             weekendOnly:false, at10:true, at3:true},
+  {name:"knorr soup",      veggies:[],             pantry:[],             weekendOnly:false, at10:true, at3:true},
+  {name:"pani puri",       veggies:[],             pantry:[],             weekendOnly:false, at10:true, at3:true},
+  {name:"veg puffs",       veggies:[],             pantry:[],             weekendOnly:false, at10:true, at3:true}
 ];
 
 /* ── Capitalization (ongoing) + alphabetical sort (applied to seeds and one-time to saved data) ── */
@@ -2165,6 +2165,7 @@ function loadMaster(){
     if(!m.snacks)    m.snacks    = JSON.parse(JSON.stringify(SEED_SNACKS));
     m.recipes.forEach(function(r){ if(!r.days) r.days=[true,true,true,true,true,true,true]; });
     m.breakfast.forEach(function(b){ if(!b.days) b.days=[true,true,true,true,true,true,true]; });
+    m.snacks.forEach(function(s){ if(s.at10===undefined) s.at10=true; if(s.at3===undefined) s.at3=true; });
     (function(){
       var haveB = {};
       m.breakfast.forEach(function(b){ haveB[String(b.name||"").toLowerCase()] = 1; });
@@ -2383,16 +2384,18 @@ function generatePlan(opts){
     var day  = DAYS[i];
     /* No snacks on weekends — leave Saturday/Sunday snack cells empty. */
     if(isWeekend(i)){ s1[i] = ""; s2[i] = ""; continue; }
-    var pool = m.snacks.filter(function(s){ return (!s.weekendOnly || isWeekend(i)) && makeable(s, av); });
+    var base = m.snacks.filter(function(s){ return (!s.weekendOnly || isWeekend(i)) && makeable(s, av); });
+    var pool10 = base.filter(function(s){ return s.at10 !== false; });
+    var pool3  = base.filter(function(s){ return s.at3  !== false; });
 
     if(gen(i, meals.S1)){
-      s1[i] = pool.length ? pick(pool).name : INSUF;
+      s1[i] = pool10.length ? pick(pool10).name : INSUF;
       picks["Snack (10 AM)_"+day] = s1[i];
     } else s1[i] = cellText(existing, "Snack (10 AM)", day);
 
     if(gen(i, meals.S2)){
-      var rest = pool.filter(function(s){ return s.name !== s1[i]; });
-      s2[i] = rest.length ? pick(rest).name : (pool.length ? pool[0].name : INSUF);
+      var rest = pool3.filter(function(s){ return s.name !== s1[i]; });
+      s2[i] = rest.length ? pick(rest).name : (pool3.length ? pool3[0].name : INSUF);
       picks["Snack (3 PM)_"+day] = s2[i];
     } else s2[i] = cellText(existing, "Snack (3 PM)", day);
   }
@@ -2949,6 +2952,8 @@ function renderSnk(){
     return '<tr>'+
       '<td><input type="text" data-k="snacks" data-i="'+i+'" data-f="name" value="'+esc(s.name)+'"></td>'+
       ingCells(s,i,"snacks",kn)+
+      '<td><label class="mp-chk" style="padding:0"><input type="checkbox" data-k="snacks" data-i="'+i+'" data-f="at10"'+(s.at10!==false?" checked":"")+'> yes</label></td>'+
+      '<td><label class="mp-chk" style="padding:0"><input type="checkbox" data-k="snacks" data-i="'+i+'" data-f="at3"'+(s.at3!==false?" checked":"")+'> yes</label></td>'+
       '<td><label class="mp-chk" style="padding:0"><input type="checkbox" data-k="snacks" data-i="'+i+'" data-f="weekendOnly"'+(s.weekendOnly?" checked":"")+'> yes</label></td>'+
       '<td><button class="rowdel" data-k="snacks" data-del="'+i+'">&times;</button></td></tr>';
   }).join("");
@@ -2976,7 +2981,7 @@ function wire(){
         var v2 = f==="veg2" ? el.value.trim() : ((it.veggies||[])[1]||"");
         it.veggies = [v1,v2].filter(function(x){ return x.length; });
       }
-      else if(f==="weekendOnly"){ it[f] = el.checked; }
+      else if(f==="weekendOnly" || f==="at10" || f==="at3"){ it[f] = el.checked; }
       else if(f==="veggies" || f==="pantry"){ it[f] = parseList(el.value).map(MP.capName); }
       else if(f==="name"){ it[f] = MP.capName(el.value.trim()); }
       else { it[f] = el.value.trim(); }
@@ -3006,7 +3011,7 @@ window.rec_add  = function(){
   MP.saveMaster(m); renderAll(); UndoManager.push("rec");
 };
 window.brek_add = function(){ addTo("breakfast", {name:"New breakfast", veggies:[], pantry:[], days:[true,true,true,true,true,true,true]}, "brek"); };
-window.snk_add  = function(){ addTo("snacks", {name:"New snack", veggies:[], pantry:[], weekendOnly:false}, "snk"); };
+window.snk_add  = function(){ addTo("snacks", {name:"New snack", veggies:[], pantry:[], weekendOnly:false, at10:true, at3:true}, "snk"); };
 
 function restore(k, tab, label){
   if(!confirm("Restore the default "+label+" list? Your edits will be lost.")) return;
