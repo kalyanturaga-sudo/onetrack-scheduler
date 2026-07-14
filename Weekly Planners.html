@@ -131,8 +131,9 @@ body { background: var(--bg); font-family: 'DM Sans', sans-serif; }
 #panel-meal td { background: var(--surface); }
 
 #panel-meal .task { display: flex; align-items: center; gap: 4px; margin: 3px 0; font-size: 12px; }
-#panel-meal .task input[type=text] { flex: 1; padding: 3px 6px; border: 1px solid var(--border); border-radius: 6px; font-size: 12px; background: var(--surface); color: var(--text); font-family: 'DM Sans', sans-serif; outline: none; }
-#panel-meal .task input[type=text]:focus { border-color: var(--accent); }
+#panel-meal .task input[type=text] { flex: 1; padding: 3px 6px; border: 1px solid transparent; border-radius: 6px; font-size: 12px; background: transparent; color: var(--text); font-family: 'DM Sans', sans-serif; outline: none; text-align: center; }
+#panel-meal .task input[type=text]:hover { border-color: var(--border); }
+#panel-meal .task input[type=text]:focus { border-color: var(--accent); background: var(--surface); }
 #panel-meal .task button { font-size: 11px; border: none; background: none; cursor: pointer; color: var(--text3); padding: 2px 3px; border-radius: 4px; }
 #panel-meal .task button:hover { color: var(--text); background: var(--surface2); }
 #panel-meal .task button:disabled { opacity: 0.2; cursor: default; }
@@ -547,11 +548,11 @@ body.nav-is-collapsed.has-vrail .panels { left: var(--vrail-width) !important; }
 
         <div class="dlg-sec">
           <div class="dlg-lbl">Meals</div>
-          <label class="dlg-row"><input type="checkbox" id="meal__genB" checked> Breakfast</label>
-          <label class="dlg-row"><input type="checkbox" id="meal__genS1" checked> Snack 1</label>
-          <label class="dlg-row"><input type="checkbox" id="meal__genL" checked> Lunch</label>
-          <label class="dlg-row"><input type="checkbox" id="meal__genS2" checked> Snack 2</label>
-          <label class="dlg-row"><input type="checkbox" id="meal__genD" checked> Dinner</label>
+          <label class="dlg-row"><input type="checkbox" id="meal__genB" checked onchange="meal_mealSelChanged()"> Breakfast</label>
+          <label class="dlg-row"><input type="checkbox" id="meal__genS1" onchange="meal_mealSelChanged()"> Snack 1</label>
+          <label class="dlg-row"><input type="checkbox" id="meal__genL" checked onchange="meal_mealSelChanged()"> Lunch</label>
+          <label class="dlg-row"><input type="checkbox" id="meal__genS2" onchange="meal_mealSelChanged()"> Snack 2</label>
+          <label class="dlg-row"><input type="checkbox" id="meal__genD" checked onchange="meal_mealSelChanged()"> Dinner</label>
         </div>
 
         <div class="dlg-acts">
@@ -1047,6 +1048,33 @@ const SUGGEST_KEY  = "MEALPLAN_SUGGEST_V1";
 const DAYS  = ["Monday","Tuesday","Wednesday","Thursday","Friday","Saturday","Sunday"];
 const MEALS = ["Breakfast","Snack Break 1","Lunch","Snack Break 2","Dinner"];
 
+/* ── Meal row visibility (driven by Generate-dialog checkboxes, persisted) ── */
+const MEAL_SEL_KEY = "MEALPLAN_MEAL_SEL_V1";
+const MEAL_CB_IDS  = { "Breakfast":"meal__genB", "Snack Break 1":"meal__genS1", "Lunch":"meal__genL", "Snack Break 2":"meal__genS2", "Dinner":"meal__genD" };
+
+function meal_loadMealSel() {
+  try {
+    const s = JSON.parse(localStorage.getItem(MEAL_SEL_KEY));
+    if (s && typeof s === "object") return s;
+  } catch (e) {}
+  return { "Breakfast":true, "Snack Break 1":false, "Lunch":true, "Snack Break 2":false, "Dinner":true };
+}
+function meal_applyMealSelToCheckboxes() {
+  const sel = meal_loadMealSel();
+  MEALS.forEach(m => { const cb = document.getElementById(MEAL_CB_IDS[m]); if (cb) cb.checked = !!sel[m]; });
+}
+function meal_visibleMeals() {
+  const sel = meal_loadMealSel();
+  return MEALS.filter(m => sel[m] !== false);
+}
+function meal_mealSelChanged() {
+  const sel = {};
+  MEALS.forEach(m => { const cb = document.getElementById(MEAL_CB_IDS[m]); sel[m] = cb ? cb.checked : true; });
+  localStorage.setItem(MEAL_SEL_KEY, JSON.stringify(sel));
+  meal_render();
+}
+window.meal_mealSelChanged = meal_mealSelChanged;
+
 const MEAL_PALETTES = {
   "Breakfast":    { bg:'#fdf4e3', hdr:'#f8e9c8', accent:'#a07030', border:'#e5cfa0' },
   "Snack Break 1":{ bg:'#fdeedd', hdr:'#f8ddb8', accent:'#b06020', border:'#e8c898' },
@@ -1202,7 +1230,7 @@ function meal_render() {
   let data = loadData();
   if (Object.keys(data).length === 0) data = createEmptyData();
 
-  MEALS.forEach(meal => {
+  meal_visibleMeals().forEach(meal => {
     const row = document.createElement("tr");
     const mealCell = document.createElement("td");
     mealCell.className = "meal-col";
@@ -1325,7 +1353,7 @@ function meal_downloadCalendarICS() {
     "Dinner":       ["18:30","19:30"],
   };
 
-  MEALS.forEach(meal => {
+  meal_visibleMeals().forEach(meal => {
     DAYS.forEach((day, di) => {
       const key   = meal + "_" + day;
       const tasks = data[key] || [];
@@ -1359,7 +1387,7 @@ function meal_printBW() {
   const weekLabel = monday.toLocaleDateString('en-AU', {weekday:'long', day:'numeric', month:'long', year:'numeric'});
 
   let sectionsHTML = "";
-  MEALS.forEach(meal => {
+  meal_visibleMeals().forEach(meal => {
     let hasAny = DAYS.some(d => (data[meal+"_"+d]||[]).length > 0);
     if (!hasAny) return;
     let rowsHTML = `<tr style="background:#f0f0f0;">
@@ -1393,7 +1421,7 @@ function meal_printColor() {
   const DAY_COLORS = ["#f5e8d8","#fdf3e0","#fde8cc","#fdddd0","#e0e8f5","#ede8f5","#e8f0e8"];
 
   let tbodyHTML = "";
-  MEALS.forEach(meal => {
+  meal_visibleMeals().forEach(meal => {
     const pal = MEAL_PALETTES[meal];
     tbodyHTML += `<tr><td style="background:${pal.hdr};border:1.5px solid ${pal.border};padding:8px 10px;font-family:'DM Serif Display',Georgia,serif;font-size:12px;color:${pal.accent};font-weight:600;white-space:nowrap;">${meal}</td>`;
     DAYS.forEach(day => {
@@ -1494,6 +1522,7 @@ window.meal_genRun = meal_genRun;
 /* ── Boot ── */
 OT.onReady(async () => {
   if(!Object.keys(_otCache).length) _otCache = await OT.getAll();
+  meal_applyMealSelToCheckboxes();
   updateWeekLabel();
   meal_render();
 });
