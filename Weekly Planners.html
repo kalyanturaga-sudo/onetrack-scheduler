@@ -636,6 +636,12 @@ body.nav-is-collapsed.has-vrail .panels { left: var(--vrail-width) !important; }
   .mp-panel table.mp-tbl select { font-family:'DM Sans',sans-serif; font-size:12px; padding:4px 6px; border:1px solid var(--border); border-radius:var(--radius-sm); background:var(--surface); color:var(--text); }
   .mp-panel .slotbox { display:flex; gap:7px; align-items:center; }
   .mp-panel .slotbox label { font-size:11px; display:flex; align-items:center; gap:2px; color:var(--text2); cursor:pointer; }
+  .mp-panel .dayrow { display:flex; gap:4px; flex-wrap:wrap; }
+  .mp-panel .dayrow label { font-size:10px; width:16px; height:16px; display:flex; align-items:center; justify-content:center; border:1px solid var(--border); border-radius:4px; color:var(--text2); cursor:pointer; }
+  .mp-panel .dayrow input[type=checkbox] { display:none; }
+  .mp-panel .dayrow input[type=checkbox]:checked + span { color:var(--accent); }
+  .mp-panel .dayrow label:has(input:checked) { background:var(--accent-soft); border-color:var(--accent); color:var(--accent); }
+  .mp-panel table.mp-tbl select.vegsel { width:100%; }
   .mp-panel .rowdel { border:none; background:none; color:var(--text3); cursor:pointer; font-size:14px; padding:2px 5px; border-radius:var(--radius-sm); }
   .mp-panel .rowdel:hover { color:#b03030; background:var(--surface2); }
   .mp-panel .mp-note { font-size:12px; color:var(--text3); margin-top:14px; line-height:1.6; }
@@ -699,9 +705,9 @@ body.nav-is-collapsed.has-vrail .panels { left: var(--vrail-width) !important; }
         </div>
       </div>
       <table class="mp-tbl"><thead><tr>
-        <th style="width:20%">Dish</th><th style="width:13%">Category</th><th style="width:22%">Needs veggies</th><th style="width:19%">Needs staples</th><th style="width:20%">B / L / D / K</th><th style="width:6%"></th>
+        <th style="width:17%">Dish</th><th style="width:11%">Category</th><th style="width:13%">Veggie 1</th><th style="width:13%">Veggie 2 (combo)</th><th style="width:11%">Staples</th><th style="width:15%">B / L / D / K</th><th style="width:15%">Days</th><th style="width:5%"></th>
       </tr></thead><tbody id="rec__body"></tbody></table>
-      <div class="mp-note">Comma-separate ingredients. Red means the name doesn't match anything in Veggies or Pantry. B = breakfast leftovers, K = kids' tiffin (recorded, not yet planned).</div>
+      <div class="mp-note">Veggie 2 only applies to combination dishes — pick a second veggie there and it becomes a combo curry. Staples: comma-separate; red means it doesn't match Pantry. B = breakfast leftovers, K = kids' tiffin (Mon–Fri only). Days marks which days of the week this dish is allowed to be picked — dish-level days always take priority over anything set on the veggie itself.</div>
     </div>
   </div><!-- /panel-rec -->
 
@@ -1904,7 +1910,7 @@ const SEED_PANTRY = ["Beans (in Tin)","rice flour","aata","besan","idli rava","u
   .map(n=>({name:n}));
 
 function R(id,name,category,veggies,pantry,slots,extra){
-  return Object.assign({id:id,name:name,category:category,veggies:veggies,pantry:pantry,slots:slots},extra||{});
+  return Object.assign({id:id,name:name,category:category,veggies:veggies,pantry:pantry,slots:slots,days:[true,true,true,true,true,true,true]},extra||{});
 }
 const LD  = {B:false,L:true,D:true,K:false};
 const LDK = {B:false,L:true,D:true,K:true};
@@ -2004,6 +2010,7 @@ function loadMaster(){
     if(!m.recipes)   m.recipes   = JSON.parse(JSON.stringify(SEED_RECIPES));
     if(!m.breakfast) m.breakfast = JSON.parse(JSON.stringify(SEED_BREAKFAST));
     if(!m.snacks)    m.snacks    = JSON.parse(JSON.stringify(SEED_SNACKS));
+    m.recipes.forEach(function(r){ if(!r.days) r.days=[true,true,true,true,true,true,true]; });
     return m;
   } catch(e){ return seedMaster(); }
 }
@@ -2115,6 +2122,7 @@ function generatePlan(opts){
     var cands = dinnerAll.filter(function(r){
       if(usedD[r.name]) return false;
       if(r.weekendOnly && !isWeekend(i)) return false;
+      if(r.days && r.days[i]===false) return false;
       return true;
     });
     var ok = cands.filter(function(r){ return makeable(r, av); });
@@ -2145,6 +2153,7 @@ function generatePlan(opts){
       if(usedL[r.name]) return false;
       if(usedD[r.name]) return false;
       if(r.weekendOnly && !isWeekend(i)) return false;
+      if(r.days && r.days[i]===false) return false;
       return true;
     });
     var ok = cands.filter(function(r){ return makeable(r, av); });
@@ -2449,6 +2458,31 @@ function ingCells(it, i, k, kn){
          '<td><input type="text" class="'+pBad.trim()+'" data-k="'+k+'" data-i="'+i+'" data-f="pantry"  value="'+esc(listStr(it.pantry))+'" placeholder="none"></td>';
 }
 
+const DAY_LABELS = ["M","T","W","T","F","S","S"];
+
+function vegOptions(names, sel){
+  return '<option value=""'+(sel?"":" selected")+'>—</option>'+names.map(function(n){
+    return '<option value="'+esc(n)+'"'+(n===sel?" selected":"")+'>'+esc(n)+'</option>';
+  }).join("");
+}
+function recVeggieCells(r, i, m){
+  var names = m.veggies.map(function(v){ return v.name; });
+  var v1 = (r.veggies||[])[0]||"", v2 = (r.veggies||[])[1]||"";
+  return '<td><select class="vegsel" data-k="recipes" data-i="'+i+'" data-f="veg1">'+vegOptions(names,v1)+'</select></td>'+
+         '<td><select class="vegsel" data-k="recipes" data-i="'+i+'" data-f="veg2">'+vegOptions(names,v2)+'</select></td>';
+}
+function recStapleCell(r, i, kn){
+  var pBad = badness(r.pantry||[], kn.p) ? " bad" : "";
+  return '<td><input type="text" class="'+pBad.trim()+'" data-k="recipes" data-i="'+i+'" data-f="pantry" value="'+esc(listStr(r.pantry))+'" placeholder="none"></td>';
+}
+function recDayCells(r, i){
+  var d = r.days||[true,true,true,true,true,true,true];
+  var boxes = DAY_LABELS.map(function(lbl,di){
+    return '<label><input type="checkbox" data-k="recipes" data-i="'+i+'" data-f="day'+di+'"'+(d[di]?" checked":"")+'><span>'+lbl+'</span></label>';
+  }).join("");
+  return '<td><div class="dayrow">'+boxes+'</div></td>';
+}
+
 function renderRec(){
   var m = MP.loadMaster(), kn = known(m);
   var body = document.getElementById("rec__body");
@@ -2462,8 +2496,10 @@ function renderRec(){
     return '<tr>'+
       '<td><input type="text" data-k="recipes" data-i="'+i+'" data-f="name" value="'+esc(r.name)+'"></td>'+
       '<td><select data-k="recipes" data-i="'+i+'" data-f="category">'+opts+'</select></td>'+
-      ingCells(r,i,"recipes",kn)+
+      recVeggieCells(r,i,m)+
+      recStapleCell(r,i,kn)+
       '<td><div class="slotbox">'+slots+'</div></td>'+
+      recDayCells(r,i)+
       '<td><button class="rowdel" data-k="recipes" data-del="'+i+'">&times;</button></td></tr>';
   }).join("");
   var c = document.getElementById("rec__count");
@@ -2513,6 +2549,12 @@ function wire(){
       var k = el.dataset.k, i = parseInt(el.dataset.i,10), f = el.dataset.f;
       var it = m[k][i]; if(!it) return;
       if(f.indexOf("slot")===0){ it.slots = it.slots||{}; it.slots[f.slice(4)] = el.checked; }
+      else if(f.indexOf("day")===0 && f.length<=4){ it.days = it.days||[true,true,true,true,true,true,true]; it.days[parseInt(f.slice(3),10)] = el.checked; }
+      else if(f==="veg1" || f==="veg2"){
+        var v1 = f==="veg1" ? el.value.trim() : ((it.veggies||[])[0]||"");
+        var v2 = f==="veg2" ? el.value.trim() : ((it.veggies||[])[1]||"");
+        it.veggies = [v1,v2].filter(function(x){ return x.length; });
+      }
       else if(f==="weekendOnly"){ it[f] = el.checked; }
       else if(f==="veggies" || f==="pantry"){ it[f] = parseList(el.value); }
       else { it[f] = el.value.trim(); }
@@ -2536,7 +2578,7 @@ function wire(){
 function addTo(k, obj, tab){
   var m = MP.loadMaster(); m[k].push(obj); MP.saveMaster(m); renderAll(); UndoManager.push(tab);
 }
-window.rec_add  = function(){ addTo("recipes", {id:"r"+Date.now(), name:"new dish", category:"other", veggies:[], pantry:[], slots:{B:false,L:true,D:true,K:false}}, "rec"); };
+window.rec_add  = function(){ addTo("recipes", {id:"r"+Date.now(), name:"new dish", category:"other", veggies:[], pantry:[], slots:{B:false,L:true,D:true,K:false}, days:[true,true,true,true,true,true,true]}, "rec"); };
 window.brek_add = function(){ addTo("breakfast", {name:"new breakfast", veggies:[], pantry:[]}, "brek"); };
 window.snk_add  = function(){ addTo("snacks", {name:"new snack", veggies:[], pantry:[], weekendOnly:false}, "snk"); };
 
