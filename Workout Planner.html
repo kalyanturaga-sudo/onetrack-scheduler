@@ -171,6 +171,7 @@ body.nav-is-collapsed #nav-show-tab { display: block; }
   cursor: pointer;
   transition: all 0.2s;
   user-select: none;
+  gap: 4px;
 }
 
 .tab-item:hover {
@@ -185,11 +186,26 @@ body.nav-is-collapsed #nav-show-tab { display: block; }
   font-weight: 600;
 }
 
+.tab-drag-handle {
+  cursor: grab;
+  color: var(--text2);
+  font-size: 14px;
+  user-select: none;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+}
+
+.tab-drag-handle:active {
+  cursor: grabbing;
+}
+
 .tab-item-label {
   flex: 1;
-  cursor: text;
+  cursor: pointer;
   padding: 2px 4px;
   border-radius: 3px;
+  text-align: left;
 }
 
 .tab-item-label:hover {
@@ -307,11 +323,11 @@ body.nav-is-collapsed #nav-show-tab { display: block; }
   padding: 4px 6px;
   border-radius: 3px;
   border: 1px solid transparent;
+  user-select: none;
 }
 
 .muscle-name:hover {
   background: rgba(0,0,0,0.05);
-  border-color: var(--text2);
 }
 
 [data-theme="dark"] .muscle-name:hover {
@@ -374,11 +390,11 @@ body.nav-is-collapsed #nav-show-tab { display: block; }
   padding: 4px;
   border-radius: 3px;
   border: 1px solid transparent;
+  user-select: none;
 }
 
 .exercise-name:hover {
   background: rgba(0,0,0,0.05);
-  border-color: var(--text2);
 }
 
 [data-theme="dark"] .exercise-name:hover {
@@ -671,9 +687,7 @@ body.nav-is-collapsed #nav-show-tab { display: block; }
 <!-- PANELS -->
 <div class="panels">
   <!-- TAB SIDEBAR -->
-  <div class="tab-sidebar" id="tabSidebar">
-    <button class="add-tab-btn" onclick="addNewTab()">+ Add Tab</button>
-  </div>
+  <div class="tab-sidebar" id="tabSidebar"></div>
 
   <!-- MAIN CONTENT -->
   <div class="content-wrapper">
@@ -689,7 +703,8 @@ const appState = {
     { id: 'lower', name: 'Lower Body', order: 0 },
     { id: 'upper', name: 'Upper Body', order: 1 },
     { id: 'core', name: 'Core', order: 2 },
-    { id: 'cardio', name: 'Cardio', order: 3 }
+    { id: 'cardio', name: 'Cardio', order: 3 },
+    { id: 'logbook', name: 'Log Book', order: 4 }
   ],
   workoutData: {
     lower: [
@@ -814,11 +829,7 @@ function saveData() {
 // Render tab sidebar
 function renderTabSidebar() {
   const sidebar = document.getElementById('tabSidebar');
-  const tabsContainer = document.querySelector('.tab-sidebar');
-  const addBtn = tabsContainer.querySelector('.add-tab-btn');
-  
   sidebar.innerHTML = '';
-  sidebar.appendChild(addBtn);
   
   appState.tabs.sort((a, b) => a.order - b.order);
   
@@ -826,14 +837,17 @@ function renderTabSidebar() {
     const tabEl = document.createElement('div');
     tabEl.className = 'tab-item' + (appState.activeTab === tab.id ? ' active' : '');
     tabEl.draggable = true;
+    
     tabEl.ondragstart = (e) => {
       e.dataTransfer.effectAllowed = 'move';
       e.dataTransfer.setData('tabId', tab.id);
     };
+    
     tabEl.ondragover = (e) => {
       e.preventDefault();
       e.dataTransfer.dropEffect = 'move';
     };
+    
     tabEl.ondrop = (e) => {
       e.preventDefault();
       const draggedId = e.dataTransfer.getData('tabId');
@@ -846,17 +860,31 @@ function renderTabSidebar() {
       }
     };
     
-    tabEl.onclick = () => {
-      appState.activeTab = tab.id;
-      renderTabSidebar();
-      renderTab(tab.id);
-    };
+    // Drag handle
+    const handle = document.createElement('span');
+    handle.className = 'tab-drag-handle';
+    handle.textContent = '⋮';
+    tabEl.appendChild(handle);
     
+    // Label - single click to switch tab
     const label = document.createElement('span');
     label.className = 'tab-item-label';
     label.textContent = tab.name;
     label.onclick = (e) => {
       e.stopPropagation();
+      appState.activeTab = tab.id;
+      renderTabSidebar();
+      if (tab.id === 'logbook') {
+        renderLogBook();
+      } else {
+        renderTab(tab.id);
+      }
+    };
+    
+    // Double-click to rename (but not Log Book)
+    label.ondblclick = (e) => {
+      e.stopPropagation();
+      if (tab.id === 'logbook') return;
       const newName = prompt('Rename tab:', tab.name);
       if (newName && newName.trim()) {
         tab.name = newName.trim();
@@ -865,31 +893,35 @@ function renderTabSidebar() {
       }
     };
     
-    const delBtn = document.createElement('button');
-    delBtn.className = 'tab-item-delete';
-    delBtn.textContent = '✕';
-    delBtn.onclick = (e) => {
-      e.stopPropagation();
-      if (confirm('Delete this tab?')) {
-        appState.tabs = appState.tabs.filter(t => t.id !== tab.id);
-        delete appState.workoutData[tab.id];
-        appState.activeTab = appState.tabs[0]?.id || 'lower';
-        saveData();
-        renderTabSidebar();
-        renderTab(appState.activeTab);
-      }
-    };
-    
     tabEl.appendChild(label);
-    tabEl.appendChild(delBtn);
+    
+    // Delete button (but not Log Book)
+    if (tab.id !== 'logbook') {
+      const delBtn = document.createElement('button');
+      delBtn.className = 'tab-item-delete';
+      delBtn.textContent = '✕';
+      delBtn.onclick = (e) => {
+        e.stopPropagation();
+        if (confirm('Delete this tab?')) {
+          appState.tabs = appState.tabs.filter(t => t.id !== tab.id);
+          delete appState.workoutData[tab.id];
+          appState.activeTab = appState.tabs[0]?.id || 'lower';
+          saveData();
+          renderTabSidebar();
+          renderTab(appState.activeTab);
+        }
+      };
+      tabEl.appendChild(delBtn);
+    }
+    
     sidebar.appendChild(tabEl);
   });
   
-  const addBtn2 = document.createElement('button');
-  addBtn2.className = 'add-tab-btn';
-  addBtn2.textContent = '+ Add Tab';
-  addBtn2.onclick = addNewTab;
-  sidebar.appendChild(addBtn2);
+  const addBtn = document.createElement('button');
+  addBtn.className = 'add-tab-btn';
+  addBtn.textContent = '+ Add Tab';
+  addBtn.onclick = addNewTab;
+  sidebar.appendChild(addBtn);
 }
 
 function addNewTab() {
@@ -899,7 +931,7 @@ function addNewTab() {
     appState.tabs.push({
       id: newId,
       name: name.trim(),
-      order: appState.tabs.length
+      order: appState.tabs.length - 1
     });
     appState.workoutData[newId] = [];
     saveData();
@@ -948,12 +980,7 @@ function renderTab(tabId) {
   content.innerHTML = html;
   
   // Footer
-  if (tabId !== 'logbook') {
-    footer.innerHTML = `<button class="btn btn-accent" onclick="logWorkout('${tabId}')">📋 Log Workout</button>`;
-  } else {
-    footer.innerHTML = `<button class="btn" onclick="printLogBook()">🖨 Print</button>
-                        <button class="btn" onclick="exportToExcel()">📊 Export Excel</button>`;
-  }
+  footer.innerHTML = `<button class="btn btn-accent" onclick="logWorkout('${tabId}')">📋 Log Workout</button>`;
 }
 
 // Render Log Book
@@ -1201,23 +1228,6 @@ function exportToExcel() {
 
 // Init
 loadData();
-
-// Handle tab sidebar clicks for logbook
-document.addEventListener('DOMContentLoaded', () => {
-  setTimeout(() => {
-    const sidebar = document.getElementById('tabSidebar');
-    const logbookTab = document.createElement('div');
-    logbookTab.className = 'tab-item' + (appState.activeTab === 'logbook' ? ' active' : '');
-    logbookTab.innerHTML = '<span class="tab-item-label">Log Book</span>';
-    logbookTab.onclick = () => {
-      appState.activeTab = 'logbook';
-      document.querySelectorAll('.tab-item').forEach(t => t.classList.remove('active'));
-      logbookTab.classList.add('active');
-      renderLogBook();
-    };
-    sidebar.appendChild(logbookTab);
-  }, 500);
-});
 
 </script>
 
