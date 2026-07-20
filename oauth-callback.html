@@ -51,8 +51,11 @@
         // Someone else initiated this redirect — do not trust the token.
         fail('State mismatch — sign-in was not started from this app');
       } else {
-        sessionStorage.setItem('OT_ACCESS_TOKEN', accessToken);
-        sessionStorage.setItem(
+        /* v5.7: localStorage, NOT sessionStorage. sessionStorage dies
+           with the tab, which forced a fresh sign-in on every browser
+           restart or new tab even while the token was still valid. */
+        localStorage.setItem('OT_ACCESS_TOKEN', accessToken);
+        localStorage.setItem(
           'OT_TOKEN_EXPIRES',
           // Shave 60s off so we never hand storage.js a token that
           // expires mid-request.

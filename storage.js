@@ -1,5 +1,30 @@
 /* ============================================================
-   storage.js  —  Ctrl+A Shared Storage Engine  v5.4
+   storage.js  —  Ctrl+A Shared Storage Engine  v5.7
+   ------------------------------------------------------------
+   v5.7: PERSISTENT SESSION. Two changes, both here in this one
+   file (plus the two localStorage lines in oauth-callback.html)
+   so no page-level HTML needed touching:
+
+     A. The access token now lives in localStorage instead of
+        sessionStorage. sessionStorage is wiped the moment a tab
+        closes, so closing the tab or restarting the browser
+        forced a fresh sign-in even when the token still had 55
+        minutes left on it. localStorage survives both.
+
+     B. SILENT RENEWAL. Google access tokens are hard-capped at
+        1 hour and that cannot be changed from a static site.
+        What CAN change is whether you SEE it. We now lazily load
+        Google Identity Services and call requestAccessToken with
+        prompt:'' — which reissues a token with no UI at all as
+        long as you're still signed in to Google in this browser
+        and have already granted consent. It runs:
+          - on a 60s timer, 5 minutes before expiry, and
+          - as an automatic retry when a Drive call 401s.
+        The old "Session expired / Sign in" banner now only
+        appears if silent renewal genuinely fails.
+
+     The full-page redirect flow (_signIn) is untouched and is
+     still what handles first-ever sign-in and hard failures.
    ------------------------------------------------------------
    v5.4: Rebranded Taskmaster -> Ctrl+A. Same DISPLAY-ONLY rule as
    v5.1 below — the ONLY change is APP_BRAND (name + tagline). The
@@ -152,6 +177,8 @@
 
   /* ── Internal state ── */
   let _accessToken = null;
+  let _tokenClient = null;      // v5.7 — GIS silent-renewal client
+  let _renewInFlight = null;    // v5.7 — de-dupes concurrent renewals
   let _fileId      = null;
   let _cache       = null;
   let _ready       = false;
@@ -279,8 +306,8 @@
   }
 
   function _checkForExistingToken() {
-    const token   = sessionStorage.getItem('OT_ACCESS_TOKEN');
-    const expires = sessionStorage.getItem('OT_TOKEN_EXPIRES');
+    const token   = localStorage.getItem('OT_ACCESS_TOKEN');
+    const expires = localStorage.getItem('OT_TOKEN_EXPIRES');
     const oauthErr = sessionStorage.getItem('OT_OAUTH_ERROR');
 
     if (oauthErr) {
@@ -302,6 +329,125 @@
   }
 
   /* ══════════════════════════════════════════════════════════
+     SILENT RENEWAL  (v5.7)
+     ------------------------------------------------------------
+     Loads Google Identity Services on demand — no <script> tag
+     needs adding to any HTML page. requestAccessToken({prompt:''})
+     reissues a token with zero UI when the browser still has a
+     live Google session + prior consent for this client_id.
+     If it can't (signed out of Google, consent revoked, third
+     party cookies fully blocked) it simply resolves false and the
+     caller falls back to the visible redirect sign-in.
+  ══════════════════════════════════════════════════════════ */
+
+  function _loadGIS() {
+    return new Promise((resolve) => {
+      if (window.google && window.google.accounts && window.google.accounts.oauth2) {
+        return resolve(true);
+      }
+      const existing = document.getElementById('ot-gis-script');
+      if (existing) {
+        existing.addEventListener('load', () => resolve(true));
+        existing.addEventListener('error', () => resolve(false));
+        return;
+      }
+      const sc = document.createElement('script');
+      sc.id = 'ot-gis-script';
+      sc.src = 'https://accounts.google.com/gsi/client';
+      sc.async = true;
+      sc.defer = true;
+      sc.onload  = () => resolve(true);
+      sc.onerror = () => resolve(false);
+      document.head.appendChild(sc);
+    });
+  }
+
+  function _storeToken(token, expiresInSeconds) {
+    _accessToken = token;
+    localStorage.setItem('OT_ACCESS_TOKEN', token);
+    localStorage.setItem(
+      'OT_TOKEN_EXPIRES',
+      // Shave 60s so we never hand a token to Drive that dies mid-request.
+      String(Date.now() + ((parseInt(expiresInSeconds, 10) || 3600) - 60) * 1000)
+    );
+  }
+
+  /* Resolves true if we now hold a fresh token, false otherwise.
+     Never throws, never shows UI. */
+  function _renewSilently() {
+    if (_renewInFlight) return _renewInFlight;
+
+    _renewInFlight = (async () => {
+      const ok = await _loadGIS();
+      if (!ok) return false;
+
+      try {
+        if (!_tokenClient) {
+          _tokenClient = google.accounts.oauth2.initTokenClient({
+            client_id: GOOGLE_CLIENT_ID,
+            scope: SCOPE,
+            prompt: '',                 // '' = silent. Do NOT change to 'consent'.
+            callback: () => {},         // replaced per-request below
+            error_callback: () => {},
+          });
+        }
+      } catch (e) {
+        console.warn('[' + APP_BRAND.name + ' storage] GIS init failed:', e);
+        return false;
+      }
+
+      const got = await new Promise((resolve) => {
+        // 8s ceiling so a silent attempt can never hang the app.
+        const timer = setTimeout(() => resolve(false), 8000);
+
+        _tokenClient.callback = (resp) => {
+          clearTimeout(timer);
+          if (resp && resp.access_token) {
+            _storeToken(resp.access_token, resp.expires_in);
+            console.log('[' + APP_BRAND.name + ' storage] token renewed silently');
+            resolve(true);
+          } else {
+            resolve(false);
+          }
+        };
+        _tokenClient.error_callback = () => { clearTimeout(timer); resolve(false); };
+
+        try {
+          _tokenClient.requestAccessToken({ prompt: '' });
+        } catch (e) {
+          clearTimeout(timer);
+          resolve(false);
+        }
+      });
+
+      if (got) { _hideBanner(); _setIndicator('saved'); }
+      return got;
+    })();
+
+    _renewInFlight.finally(() => { _renewInFlight = null; });
+    return _renewInFlight;
+  }
+
+  /* Fires every 60s; renews once we're inside the last 5 minutes of
+     the token's life, so a Drive call almost never 401s in the first
+     place. Cheap — it's a timestamp comparison until it's needed. */
+  function _startRenewalWatchdog() {
+    setInterval(() => {
+      if (!_accessToken) return;
+      const exp = parseInt(localStorage.getItem('OT_TOKEN_EXPIRES') || '0', 10);
+      if (exp && Date.now() > exp - 5 * 60 * 1000) _renewSilently();
+    }, 60 * 1000);
+
+    // Coming back to a tab that slept through its expiry is the other
+    // common way to land on a dead token.
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState !== 'visible' || !_accessToken) return;
+      const exp = parseInt(localStorage.getItem('OT_TOKEN_EXPIRES') || '0', 10);
+      if (exp && Date.now() > exp - 5 * 60 * 1000) _renewSilently();
+    });
+  }
+
+  /* ══════════════════════════════════════════════════════════
      DRIVE REST CALLS
   ══════════════════════════════════════════════════════════ */
 
@@ -310,10 +456,27 @@
       Authorization: 'Bearer ' + _accessToken,
     });
     const res = await fetch(url, opts);
+
     if (res.status === 401) {
+      /* v5.7: don't give up and nag the user — try a silent renewal
+         first and replay the exact same request. _retried guards
+         against an infinite loop if the new token also 401s. */
+      if (!opts._otRetried) {
+        _setIndicator('loading');
+        const renewed = await _renewSilently();
+        if (renewed) {
+          const retryOpts = Object.assign({}, opts, { _otRetried: true });
+          retryOpts.headers = Object.assign({}, opts.headers, {
+            Authorization: 'Bearer ' + _accessToken,
+          });
+          return _driveFetch(url, retryOpts);
+        }
+      }
+
+      // Silent renewal genuinely failed — now it's worth asking.
       _accessToken = null;
-      sessionStorage.removeItem('OT_ACCESS_TOKEN');
-      sessionStorage.removeItem('OT_TOKEN_EXPIRES');
+      localStorage.removeItem('OT_ACCESS_TOKEN');
+      localStorage.removeItem('OT_TOKEN_EXPIRES');
       _hideBanner();
       _setIndicator('unlinked');
       _showBanner(
@@ -797,11 +960,21 @@
     _createIndicator();
     _renderGlobalFooter();
 
+    _startRenewalWatchdog();
+
     if (_checkForExistingToken()) {
       _connectToFile();
     } else {
-      _setIndicator('unlinked');
-      _showBanner(..._signInBannerMsg());
+      /* v5.7: no valid token on this page load — but that does NOT
+         mean the user must sign in again. Try silently first and
+         only show the banner if that fails. This is what makes a
+         browser restart, or a token that expired overnight, invisible. */
+      _setIndicator('loading');
+      _renewSilently().then((renewed) => {
+        if (renewed) { _connectToFile(); return; }
+        _setIndicator('unlinked');
+        _showBanner(..._signInBannerMsg());
+      });
       // Work offline: seed the cache from the local mirror so every page's
       // onReady() fires and the UI renders (and stays editable) even without
       // Drive sign-in. Signing in later reloads and Drive takes over.
@@ -894,13 +1067,22 @@
     },
 
     async forget() {
+      const _tokenBeingForgotten = _accessToken;
       _accessToken = null;
       _fileId      = null;
       _cache       = null;
       _ready       = false;
-      sessionStorage.removeItem('OT_ACCESS_TOKEN');
-      sessionStorage.removeItem('OT_TOKEN_EXPIRES');
+      localStorage.removeItem('OT_ACCESS_TOKEN');
+      localStorage.removeItem('OT_TOKEN_EXPIRES');
       sessionStorage.removeItem('OT_OAUTH_STATE');
+      _tokenClient = null;
+      /* Also revoke the GIS grant so "forget" really forgets, otherwise
+         the next silent renewal would just sign you straight back in. */
+      try {
+        if (window.google && google.accounts && google.accounts.oauth2 && _tokenBeingForgotten) {
+          google.accounts.oauth2.revoke(_tokenBeingForgotten, () => {});
+        }
+      } catch (e) { /* non-fatal */ }
       _setIndicator('unlinked');
       _showBanner(..._signInBannerMsg());
     },
