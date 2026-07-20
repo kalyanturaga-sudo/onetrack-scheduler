@@ -48,7 +48,7 @@
    HOW STORAGE WORKS (v4.0, unchanged):
    1. Banner shows "Sign in to sync".
    2. Tapping Sign in saves the current page URL, then does a
-      normal full-page redirect to Google's consent screen.
+      normal full-page redirect to GitHub's consent screen.
    3. Google redirects back to oauth-callback.html (a single
       fixed page, registered as the OAuth redirect URI).
    4. That page grabs the token from the URL, stores it in
@@ -90,9 +90,9 @@
 
    CONFIG:
    ============================================================ */
-  const GOOGLE_CLIENT_ID = '356548061716-4fjrgh28vetubhuu2cf4ano859tnftuv.apps.googleusercontent.com';
+  const GITHUB_CLIENT_ID = 'YOUR_GITHUB_CLIENT_ID_HERE';
   const DRIVE_FILE_NAME  = 'onetrack-data.json';
-  const REDIRECT_URI     = 'https://kalyanturaga-sudo.github.io/onetrack-scheduler/oauth-callback.html';
+  const REDIRECT_URI     = 'https://kalyanturaga-sudo.github.io/CntlA-scheduler/oauth-callback.html';
 
   /* ── BRAND CONFIG — change product name/tagline ONLY here.
      Internal storage keys / file names above are untouched on
@@ -142,7 +142,7 @@
 (function (global) {
   'use strict';
 
-  const SCOPE        = 'https://www.googleapis.com/auth/drive';
+  const SCOPE        = 'user:email';
   const BANNER_ID     = 'ot-storage-banner';
   const INDICATOR_ID  = 'ot-sync-indicator';
 
@@ -233,7 +233,7 @@
 
   function _signInBannerMsg() {
     return [
-      '<strong style="color:#5b7fff;">Sign in to sync</strong><br><span style="color:#a3a1a8;font-size:12px;">Connect your Google account to load and save your checklists.</span>',
+      '<strong style="color:#5b7fff;">Sign in with GitHub</strong><br><span style="color:#a3a1a8;font-size:12px;">Connect your GitHub account to sync your checklists.</span>',
       'Sign in',
       _signIn,
     ];
@@ -246,14 +246,11 @@
   function _signIn() {
     sessionStorage.setItem('OT_RETURN_PATH', window.location.href);
     const params = new URLSearchParams({
-      client_id: GOOGLE_CLIENT_ID,
+      client_id: GITHUB_CLIENT_ID,
       redirect_uri: REDIRECT_URI,
-      response_type: 'token',
-      scope: SCOPE,
-      include_granted_scopes: 'true',
-      prompt: 'consent',
+      scope: 'user:email',
     });
-    window.location.href = 'https://accounts.google.com/o/oauth2/v2/auth?' + params.toString();
+    window.location.href = 'https://github.com/login/oauth/authorize?' + params.toString();
   }
 
   function _checkForExistingToken() {
