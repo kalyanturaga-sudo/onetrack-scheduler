@@ -87,8 +87,7 @@
      does use them for its per-section colour theming, and this
      is what keeps that working without needing page-specific
      code anywhere.
-
-   CONFIG:
+     CONFIG:
    ============================================================ */
   const GITHUB_CLIENT_ID = 'YOUR_GITHUB_CLIENT_ID_HERE';
   const DRIVE_FILE_NAME  = 'onetrack-data.json';
@@ -1035,3 +1034,4 @@
   _init();
 
 })(window);
+
