@@ -665,6 +665,48 @@ body.nav-is-collapsed #nav-show-tab { display: block; }
   .tab-sidebar { display: none; }
 }
 
+/* ===== HOVER-REVEAL DELETE BUTTONS ===== */
+.tab-item-delete,
+.muscle-delete-btn,
+.exercise-row .action-btn.delete,
+.log-exercise .log-delete-btn,
+.log-entry-header .btn.delete {
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.15s ease;
+}
+
+.tab-item:hover .tab-item-delete,
+.tab-item.active .tab-item-delete,
+.muscle-group:hover .muscle-delete-btn,
+.exercise-row:hover .action-btn.delete,
+.log-exercise:hover .log-delete-btn,
+.log-entry:hover .log-entry-header .btn.delete {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+/* Keyboard accessibility */
+.tab-item-delete:focus-visible,
+.muscle-delete-btn:focus-visible,
+.exercise-row .action-btn.delete:focus-visible,
+.log-exercise .log-delete-btn:focus-visible,
+.log-entry-header .btn.delete:focus-visible {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+/* Touch devices have no hover - keep them visible */
+@media (hover: none) {
+  .tab-item-delete,
+  .muscle-delete-btn,
+  .exercise-row .action-btn.delete,
+  .log-exercise .log-delete-btn,
+  .log-entry-header .btn.delete {
+    opacity: 1;
+    pointer-events: auto;
+  }
+}
 </style>
 </head>
 <body>
